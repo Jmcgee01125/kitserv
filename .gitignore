@@ -1,0 +1,10 @@
+deps/
+jansson/
+libjwt/
+sqlite/
+obj/
+filekit
+
+.*
+!.clang-format
+!.gitignore
