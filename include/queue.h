@@ -12,8 +12,9 @@ typedef struct epoll_event queue_event;
 #endif
 
 typedef enum {
-    QUEUE_IN,
-    QUEUE_OUT,
+    // must not bitwise overlap
+    QUEUE_IN = 1,
+    QUEUE_OUT = 2,
 } queue_wait_cond;
 
 /**

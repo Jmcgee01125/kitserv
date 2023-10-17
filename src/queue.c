@@ -46,13 +46,11 @@ int queue_add(int qfd, int fd, void* data, queue_wait_cond type, int shared)
     } else {
         e.events = EPOLLET;
     }
-    switch (type) {
-        case QUEUE_IN:
-            e.events |= EPOLLIN;
-            break;
-        case QUEUE_OUT:
-            e.events |= EPOLLOUT;
-            break;
+    if (type & QUEUE_IN) {
+        e.events |= EPOLLIN;
+    }
+    if (type & QUEUE_OUT) {
+        e.events |= EPOLLOUT;
     }
     e.data.ptr = data;
     if (epoll_ctl(qfd, EPOLL_CTL_ADD, fd, &e) < 0) {
@@ -73,13 +71,11 @@ int queue_rearm(int qfd, int fd, void* data, queue_wait_cond type, int shared)
     } else {
         e.events = EPOLLET;
     }
-    switch (type) {
-        case QUEUE_IN:
-            e.events |= EPOLLIN;
-            break;
-        case QUEUE_OUT:
-            e.events |= EPOLLOUT;
-            break;
+    if (type & QUEUE_IN) {
+        e.events |= EPOLLIN;
+    }
+    if (type & QUEUE_OUT) {
+        e.events |= EPOLLOUT;
     }
     e.data.ptr = data;
     if (epoll_ctl(qfd, EPOLL_CTL_MOD, fd, &e) < 0) {

@@ -111,11 +111,14 @@ static int strtonum(char* str, int64_t* dest)
 
 /**
  * Silently close the given fd and set it to zero.
+ * If the fd is already zero, do nothing.
  */
-static void close_set_zero(int* fd)
+static inline void close_fd_to_zero(int* fd)
 {
-    close(*fd);
-    *fd = 0;
+    if (*fd) {
+        close(*fd);
+        *fd = 0;
+    }
 }
 
 /**
@@ -707,7 +710,7 @@ parse_header:
 
     /* before jumping to `past_end`, set the parse state to wherever you came from */
 past_end:
-    if (readrc == 0 && client->req_headers_len == HTTP_BUFSZ) {
+    if (client->req_headers_len == HTTP_BUFSZ) {
         client->ta.resp_status = HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE;
         return -1;
     }
@@ -925,6 +928,7 @@ static int handle_static_path(struct http_client* client)
     }
 
     // TODO: take advantage of the fact that this will call `stat` on our target file, perhaps also have it open it
+    //       maybe just inline it here
     if (validate_http_path(client, fname)) {
         return -1;
     }
@@ -934,44 +938,46 @@ static int handle_static_path(struct http_client* client)
         client->ta.resp_status = HTTP_500_INTERNAL_ERROR;
         return -1;
     }
-    rc = open(fname, O_RDONLY);
-    if (rc < 0) {
-        client->ta.resp_status = HTTP_500_INTERNAL_ERROR;
-        return -1;
+
+    // don't open on a HEAD - we already got our info from the stat
+    if (client->ta.req_method == HTTP_GET) {
+        rc = open(fname, O_RDONLY);
+        if (rc < 0) {
+            client->ta.resp_status = HTTP_500_INTERNAL_ERROR;
+            return -1;
+        }
+        client->ta.resp_fd = rc;
     }
-    client->ta.resp_fd = rc;
-    client->ta.resp_fd_size = st.st_size;
 
     if (client->ta.range_requested) {
         // we have a range request, parse it and set the header, erroring if necessary
         if (parse_range(client, st.st_size) ||
-            http_header_add_content_range(client, client->ta.resp_body_pos, client->ta.resp_body_end,
-                                          client->ta.resp_fd_size)) {
-            close_set_zero(&client->ta.resp_fd);
+            http_header_add_content_range(client, client->ta.resp_body_pos, client->ta.resp_body_end, st.st_size)) {
+            close_fd_to_zero(&client->ta.resp_fd);
             return -1;
         }
     } else {
         // resp_body_pos already set - 0
-        client->ta.resp_body_end = client->ta.resp_fd_size - 1;
+        client->ta.resp_body_end = st.st_size - 1;
     }
 
     // add content type, accept-ranges, and last modified headers
     if (http_header_add_content_type_guess(client, strrchr(fname, '.')) ||
         http_header_add(client, "accept-ranges", "bytes") || http_header_add_last_modified(client, st.st_mtim.tv_sec)) {
-        close_set_zero(&client->ta.resp_fd);
+        close_fd_to_zero(&client->ta.resp_fd);
         return -1;
     }
 
     if (client->ta.req_modified_since) {
         if (!strptime(client->ta.req_modified_since, "%a, %d %b %Y %T GMT", &tm)) {
             client->ta.resp_status = HTTP_400_BAD_REQUEST;
-            close_set_zero(&client->ta.resp_fd);
+            close_fd_to_zero(&client->ta.resp_fd);
             return -1;
         }
         if (difftime(st.st_mtim.tv_sec, timegm(&tm)) <= 0) {
             client->ta.resp_status = HTTP_304_NOT_MODIFIED;
             client->ta.req_method = HTTP_HEAD;  // since the response is otherwise identical
-            close_set_zero(&client->ta.resp_fd);
+            close_fd_to_zero(&client->ta.resp_fd);
         }
     } else if (client->ta.range_requested) {
         client->ta.resp_status = HTTP_206_PARTIAL_CONTENT;
@@ -1005,8 +1011,10 @@ static int prepare_error_response(struct http_client* client)
         case HTTP_403_PERMISSION_DENIED:
             return buffer_append(&client->resp_body, "Permission denied.", sizeof("Permission denied.") - 1);
         case HTTP_404_NOT_FOUND:
-            // TODO: should probably put the path in here
-            return buffer_append(&client->resp_body, "Not found.", sizeof("Not found.") - 1);
+            if (buffer_append(&client->resp_body, "Not found: ", sizeof("Not found: ") - 1)) {
+                return -1;
+            }
+            return buffer_append(&client->resp_body, client->ta.req_path, strlen(client->ta.req_path));
         case HTTP_405_METHOD_NOT_ALLOWED:
             if ((rc = http_header_add_allow(client))) {
                 return rc;
@@ -1062,8 +1070,10 @@ success:
     // others should have been set already
 
     // different measurements based on whether we're sending a file or the body buffer
-    if (client->ta.resp_fd == 0) {
-        if (http_header_add_content_length(client, client->resp_body.len)) {
+    // can't just check if the ta.resp_fd is 0, since HEAD requests will leave it alone
+    // instead, we require that ta.resp_body_end is 0 when sending body buffer, so use that
+    if (client->ta.resp_body_end == 0) {
+        if (http_header_add_content_length(client, client->resp_body.len - client->ta.resp_body_pos)) {
             goto error_response;
         }
     } else {
@@ -1084,9 +1094,7 @@ success:
     return 0;
 
 error_response:
-    if (client->ta.resp_fd != 0) {
-        close_set_zero(&client->ta.resp_fd);
-    }
+    close_fd_to_zero(&client->ta.resp_fd);
     if (already_errored || prepare_error_response(client)) {
         // highly unlikely to be salvageable, so just drop the connection
         return -1;
@@ -1152,17 +1160,16 @@ int http_send_resp_body(struct http_client* client)
                           client->ta.resp_body_end - client->ta.resp_body_pos + 1);
         } while (rc > 0);
 #else
-            // TODO: send the file here using `send(2)`
-            //       cycle it within the client->resp_body.buf area (use .max)
+        // TODO: send the file here using `send(2)`
+        //       cycle it within the client->resp_body.buf area (use .max)
 #endif
-        if (rc < 0) {
-            if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                return 0;
-            }
-            close_set_zero(&client->ta.resp_fd);
-            return -1;
+        if (client->ta.resp_body_pos > client->ta.resp_body_end) {
+            // finished sending the file - pos should be one greater than end here
+            close_fd_to_zero(&client->ta.resp_fd);
         }
-        close_set_zero(&client->ta.resp_fd);
+        if (rc < 0) {
+            return errno == EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
+        }
     }
 
     // data to send is in the body buffer

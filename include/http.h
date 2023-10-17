@@ -87,20 +87,25 @@ struct http_transaction {
     char* req_modified_since;
 
     /* Response fields */
-    // pos - current position from which data has not yet been sent
-    // len - amount of data to send from that buffer in total
     enum http_response_status resp_status;
-    int resp_start_pos;
-    int resp_start_len;
+    int resp_start_pos;  // data not yet sent
+    int resp_start_len;  // total length
     int resp_headers_pos;
     int resp_headers_len;
     /**
-     * if 0 - use client.resp_body and ignore client.ta.resp_body_end (in favor of client.resp_body's internal size)
-     * else - send this fd, be sure to set client.ta.resp_fd_size and client.ta.resp_body_end
-     * any nonzero value indicates that this fd is open - set to 0 when closing
+     * content-length header:
+     *      if client.ta.resp_body_end is 0, set to `client.resp_body.len - client.ta.resp_body_pos`
+     *      otherwise, set to `client.ta.resp_body_end - client.ta.resp_body_pos + 1`
+     *
+     * sending:
+     *      if client.ta.resp_fd is nonzero, send from client.ta.resp_body_pos to client.ta.resp_body_end
+     *      otherwise, send the contents of client.resp_body starting at client.ta.resp_body_pos
+     *
+     * this setup is designed to facilitate sending either a file or buffer with the most convenient system,
+     * but allow HEAD requests to set size with the file size system and send nothing using the client.resp_body system
+     * (by setting resp_fd to 0, leaving resp_body empty, and setting pos / end as if a file were being sent)
      */
     int resp_fd;
-    off_t resp_fd_size;   // total length of resp_fd, if set
     off_t resp_body_pos;  // send progress, initial value of range start, should always be set
     off_t resp_body_end;  // final offset, end of range or content length
     bool range_requested;
@@ -113,7 +118,7 @@ struct http_client {
      * req_headers is the owner, and always points to the beginning of the space
      * req_payload points into this buffer at the position where the payload starts
      *      (the position immediately after the end of the headers)
-     * neither "segment" may exceed `HTTP_BUFSZ` - they are essentially treated as separate but "overlapping" buffers
+     * neither "segment" may exceed HTTP_BUFSZ - they are essentially treated as separate but "overlapping" buffers
      */
     char* req_headers;  // persistent request header information
     char* req_payload;  // cycling receive buffer
