@@ -11,7 +11,7 @@ SRC_DIR := src
 WARNINGS := -Wall -Wextra -Wmissing-prototypes -Winline -pedantic
 
 DEP_CFLAGS := -O2 $(WARNINGS) -I$(DEP_INCLUDE_DIR) -fpie
-CFLAGS := -MMD -MP -O2 $(WARNINGS) -I$(DEP_INCLUDE_DIR) -I$(INCLUDE_DIR) -fpie
+CFLAGS := -MMD -MP -O2 $(WARNINGS) -I$(DEP_INCLUDE_DIR) -I$(INCLUDE_DIR) -fpie -DNDEBUG
 
 # include lib directory in runtime path for dynamic linking
 LDFLAGS := -pthread -Wl,-rpath -Wl,$(DEP_LIB_DIR)
@@ -30,12 +30,16 @@ DEPENDS := $(patsubst $(SRC_DIR)/%.c, $(OBJ_DIR)/%.d, $(SOURCES))
 
 all:	filekit
 
-debug: CFLAGS += -g -O0
+debug: CFLAGS += -g -O0 -UNDEBUG
 debug: all
 
-$(DEP_OBJ_DIR)/%.o:	$(DEP_SRC_DIR)/%.c Makefile
+# don't rebuild deps even on make -B (since they shouldn't be changing)
+# use `make cleaner` to remove and force this rebuild
+$(DEP_OBJ_DIR)/%.o:	$(DEP_SRC_DIR)/%.c
 	@mkdir -p $(DEP_OBJ_DIR)
-	$(CC) $(DEP_CFLAGS) -c $< -o $@
+	if [ ! -f $@ ]; then \
+		$(CC) $(DEP_CFLAGS) -c $< -o $@ ; \
+	fi
 
 -include $(DEPENDS)
 

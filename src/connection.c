@@ -2,6 +2,7 @@
 
 #include "connection.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -59,8 +60,14 @@ struct connection* connection_accept(struct connection_container* container, int
         return NULL;
     }
 
-    // no need to reset - done during connection_close and init
     conn->client.sockfd = acceptfd;
+
+    // ensure that this connection is fresh
+    assert(conn->client.req_headers_len == 0);
+    assert(conn->client.resp_body.len == 0);
+    assert(conn->client.ta.state == 0);
+    assert(conn->client.ta.parse_state == 0);
+    assert(conn->client.ta.resp_status == 0);
 
     return conn;
 }

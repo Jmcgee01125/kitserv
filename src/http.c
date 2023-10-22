@@ -6,6 +6,7 @@
 
 #include "http.h"
 
+#include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -51,6 +52,7 @@ void http_init(char* servername, char* http_directory, char* fallback_path, char
 
 int http_create_client_struct(struct http_client* client)
 {
+    assert(client != NULL);
     if (!(client->req_headers = malloc(HTTP_BUFSZ * 2))) {
         return -1;
     }
@@ -83,6 +85,7 @@ void http_finalize_transaction(struct http_client* client)
 {
     // in case the client sent part of their next request into the buffers for this one
     // so, what we considered the payload length is actually now the header length
+    assert(client->ta.req_payload_pos + client->ta.req_payload_len <= HTTP_BUFSZ);
     memmove(client->req_headers, &client->req_payload[client->ta.req_payload_pos], client->ta.req_payload_len);
     client->req_headers_len = client->ta.req_payload_len;
     cleanup_client(client);
@@ -263,6 +266,9 @@ static int parse_range(struct http_client* client, off_t filesize)
     char* r;
     char* hyphen = NULL;
     off_t conv;
+
+    assert(client->ta.range_requested);
+    assert(client->ta.req_range != NULL);
 
     if (strncmp(p, "bytes=", 6)) {
         goto bad_request;
@@ -1162,6 +1168,8 @@ int http_send_resp_body(struct http_client* client)
 #else
         // TODO: send the file here using `send(2)`
         //       cycle it within the client->resp_body.buf area (use .max)
+        fprintf(stderr, "Cannot send file.\n");
+        client->ta.resp_body_pos = client->ta.resp_body_end + 1;
 #endif
         if (client->ta.resp_body_pos > client->ta.resp_body_end) {
             // finished sending the file - pos should be one greater than end here
