@@ -10,6 +10,13 @@
 
 #define HTTP_BUFSZ (4096)
 
+struct http_transaction;
+struct http_client;
+struct http_api_entry;
+struct http_api_tree;
+
+typedef void (*api_handler_t)(struct http_client* client);
+
 enum http_transaction_state {
     HTTP_STATE_READ = 0,
     HTTP_STATE_API,
@@ -30,12 +37,15 @@ enum http_parse_state {
     HTTP_PS_REQ_HEAD_LF,  // reading header, unterminated CR
 };
 
+/**
+ * Can be used solo or as a bit flag
+ */
 enum http_method {
-    HTTP_GET,
-    HTTP_PUT,
-    HTTP_HEAD,
-    HTTP_POST,
-    HTTP_DELETE,
+    HTTP_GET = 1,
+    HTTP_PUT = 2,
+    HTTP_HEAD = 5, // intentional overlap with GET, to support checking both using `method & GET`
+    HTTP_POST = 8,
+    HTTP_DELETE = 16,
 };
 
 enum http_version {
@@ -98,7 +108,7 @@ struct http_transaction {
      *      otherwise, set to `client.ta.resp_body_end - client.ta.resp_body_pos + 1`
      *
      * sending:
-     *      if client.ta.resp_fd is nonzero, send from client.ta.resp_body_pos to client.ta.resp_body_end
+     *      if client.ta.resp_fd is nonzero, send from client.ta.resp_body_pos to client.ta.resp_body_end in file
      *      otherwise, send the contents of client.resp_body starting at client.ta.resp_body_pos
      *
      * this setup is designed to facilitate sending either a file or buffer with the most convenient system,
@@ -107,9 +117,12 @@ struct http_transaction {
      */
     int resp_fd;
     off_t resp_body_pos;  // send progress, initial value of range start, should always be set
-    off_t resp_body_end;  // final offset, end of range or content length
+    off_t resp_body_end;  // final offset when sending fd, end of range or content length
     bool range_requested;
-    bool hit_api;
+
+    api_handler_t api_endpoint_hit;  // for re-calling API functions without re-parsing tree, and tracking if run at all
+    void* api_internal_data;         // data pointer for API requests - NULL on first call
+    int api_allow_flags;             // used in case parsing matched an endpoint, but did not match allowed method(s)
 };
 
 struct http_client {
@@ -133,15 +146,15 @@ struct http_client {
      * note that it is not always up-to-date: it is only up to date between request start and the beginning of the last
      * call to parse headers (as there is no need to update it after that, until a new transaction begins)
      */
-    int req_headers_len;  // stored here because it may persist across transaction
+    int req_headers_len;
 
     int sockfd;
 };
 
 struct http_api_entry {
-    char* prefix;  // unique prefix of the api endpoint, e.g. `login`
+    char* prefix;  // prefix of the api endpoint, e.g. "login"
     int prefix_length;
-    enum http_method method;  // http method to allow, GET implies HEAD
+    enum http_method method;  // GET implies HEAD, no need to set HEAD here
     /**
      * Function to receive the client so that the api endpoint code can do processing.
      * The client's `req_*` fields will be set before calling, but the payload may only be partially read.
@@ -149,9 +162,13 @@ struct http_api_entry {
      * Write response data, if necessary, into `client->resp_body` (see `buffer_append(...)`).
      * Write custom file to send, if necessary, into `client->ta.resp_fd`. Leave 0 otherwise. See that field's comment.
      * Set `client->ta.resp_status` before returning to indicate the result of processing.
-     * Headers will be wiped on error, but the body will still be sent.
+     * If `client->ta.resp_status` is not set, will assume that payload reads hit EAGAIN. APIs may make use of
+     *      `client->ta.api_internal_data` to remember information when called again (more data available).
+     * If `client->ta.resp_status` indicates an error, either of the following will occur:
+     *      If the `client->ta.resp_fd` is negative, all headers will be wiped and a generic error will be sent.
+     *      Otherwise, only the response status matters (the message will be sent as normal).
      */
-    void (*handler)(struct http_client* client);
+    api_handler_t handler;
 };
 
 /**
@@ -159,10 +176,10 @@ struct http_api_entry {
  * When parsing, nodes are considered in the following order:
  * The path is split on the first /.
  * The entries of the tree are iterated.
- * If any entry's method and prefix matches, the handler is called and iteration is finished.
+ *      If any entry's method and prefix matches, the handler is called and iteration is finished.
  * The subtrees of the tree are iterated.
- * If the subtree's prefix matches, the tree is recursed for the next segment of the path.
- * If at any point there are no more path components or none of the entries match, API matching is canceled.
+ *      If the subtree's prefix matches, the tree is recursed for the next segment of the path.
+ * If at any point there are no more path components or none of the entries/subtrees match, API matching is canceled.
  */
 struct http_api_tree {
     char* prefix;  // prefix of this tree, ignored for entry point

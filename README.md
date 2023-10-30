@@ -19,7 +19,7 @@ FileKit's features consist simply of the following:
 
 ## Usage
 
-**For security reasons, it is HIGHLY RECOMMENDED that any publicly-facing
+**For security reasons, it is STRONGLY RECOMMENDED that any publicly-facing
 FileKit instance be run behind a reverse proxy to provide TLS support.**\
 FileKit does not provide in-flight encryption as part of its services.
 
@@ -65,3 +65,9 @@ chooses.
 
 Keep in mind that the frontend must be static, potentially using an SPA through
 fallback.
+
+## License
+
+FileKit is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms. For more information, see the LICENSE file.

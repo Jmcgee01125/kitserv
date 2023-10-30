@@ -114,11 +114,11 @@ static int strtonum(char* str, int64_t* dest)
 
 /**
  * Silently close the given fd and set it to zero.
- * If the fd is already zero, do nothing.
+ * If the fd is already zero or negative, do nothing.
  */
 static inline void close_fd_to_zero(int* fd)
 {
-    if (*fd) {
+    if (*fd > 0) {
         close(*fd);
         *fd = 0;
     }
@@ -482,16 +482,27 @@ static int http_header_add_content_length(struct http_client* client, off_t leng
 
 static int http_header_add_allow(struct http_client* client)
 {
-    if (client->ta.hit_api) {
-        // TODO: if we have a 405 Method Not Allowed, we MUST return an Allow header *for the target resource*
-        //      so, we must detect the api endpoints here and determine the rules as well
-        //      (since the api endpoints will fail in serve_api)
-        //      /api/upload   - POST
-        //      /api/delete   - DELETE
-        //      /api/files    - GET/HEAD
-        //      /d/           - GET/HEAD
-        //      http internal - GET/HEAD
-        return -1;
+    const int ALLOW_BODY_MAX = sizeof("GET, PUT, HEAD, POST, DELETE, ");
+    char allow_body[ALLOW_BODY_MAX];
+    int len = 0;
+
+    if (client->ta.api_allow_flags != 0) {
+        // we set allow flags when parsing the tree, so extract what the legal ones for that endpoint are
+        if (client->ta.api_allow_flags & HTTP_GET) {
+            len += snprintf(&allow_body[len], ALLOW_BODY_MAX - len, "GET, HEAD, ");
+        }
+        if (client->ta.api_allow_flags & HTTP_PUT) {
+            len += snprintf(&allow_body[len], ALLOW_BODY_MAX - len, "PUT, ");
+        }
+        if (client->ta.api_allow_flags & HTTP_POST) {
+            len += snprintf(&allow_body[len], ALLOW_BODY_MAX - len, "POST, ");
+        }
+        if (client->ta.api_allow_flags & HTTP_DELETE) {
+            len += snprintf(&allow_body[len], ALLOW_BODY_MAX - len, "DELETE, ");
+        }
+        assert(len > 2);
+        allow_body[len - 2] = '\0';  // cut off trailing comma
+        return http_header_add(client, "allow", "%s", allow_body);
     } else {
         return http_header_add(client, "allow", "GET, HEAD");
     }
@@ -565,6 +576,7 @@ int http_recv_request(struct http_client* client)
                     goto method_not_allowed;
                 default:
 method_not_allowed:
+                    client->ta.req_method = HTTP_GET;  // default on errors
                     client->ta.resp_status = HTTP_405_METHOD_NOT_ALLOWED;
                     return -1;
             }
@@ -733,21 +745,70 @@ bad_request:
 #undef parse_advance
 }
 
-int http_serve_api(struct http_client* client)
+/**
+ * Parse API tree for a given client, writing their handler if any is found (otherwise unchanged).
+ * Return 0 if parsing either succeeded or found no matches.
+ * Return -1 if parsing found a match for the path, but not the method.
+ */
+static int parse_api_tree(struct http_client* client, char* path, struct http_api_tree* current_tree)
 {
-    if (api_tree) {
-        // TODO: parse the API endpoints according to the list, and call off to them if we match
-        //       they will fill out the request information instead of us, indicating so by setting the resp status
+    int i;
+    char* q;
 
-        // TODO: save the address of the function being called, if not null then jump immediately (no list check)
-
-        // TODO: API probably needs their own data storage for managing internal state, like whether or not validation
-        //       has succeeded for a given user - give them a void* in the ta struct
-
-        // TODO: if we hit api, set `client->ta.hit_api = true;`
-        fprintf(stderr, "API subsystem not implemented. Hanging up.\n");
+    assert(client->ta.api_allow_flags == 0);
+    for (q = path; *q && *q != '/'; q++)
+        ;
+    for (i = 0; i < current_tree->num_entries; i++) {
+        if (current_tree->entries[i].prefix_length == q - path &&
+            !strncmp(path, current_tree->entries[i].prefix, q - path)) {
+            // matched an endpoint, see if method matches
+            client->ta.api_allow_flags |= current_tree->entries[i].method;
+            if (client->ta.req_method & current_tree->entries[i].method) {
+                client->ta.api_endpoint_hit = current_tree->entries[i].handler;
+                return 0;
+            }
+        }
+    }
+    if (client->ta.api_allow_flags) {
+        // we hit an endpoint but didn't match any of its methods - stop parsing
+        client->ta.resp_status = HTTP_405_METHOD_NOT_ALLOWED;
         return -1;
     }
+    for (i = 0; i < current_tree->num_subtrees; i++) {
+        if (current_tree->subtrees[i].prefix_length == q - path &&
+            !strncmp(path, api_tree->subtrees[i].prefix, q - path)) {
+            return parse_api_tree(client, q + 1, &current_tree->subtrees[i]);
+        }
+    }
+    return 0;
+}
+
+int http_serve_api(struct http_client* client)
+{
+    char* p;
+
+    if (api_tree) {
+        // haven't been here yet, parse the tree and see if we hit it
+        if (!client->ta.api_endpoint_hit) {
+            assert(client->ta.api_internal_data == NULL);
+            // cut off leading /, if it exists
+            for (p = client->ta.req_path; *p == '/'; p++)
+                ;
+            if (parse_api_tree(client, p, api_tree)) {
+                goto cont;
+            }
+        }
+
+        // hit an endpoint, call to it
+        if (client->ta.api_endpoint_hit) {
+            client->ta.api_endpoint_hit(client);
+            // they must set resp_status to indicate advancement
+            if (client->ta.resp_status == HTTP_X_RESP_STATUS_MISSING) {
+                return 0;
+            }
+        }
+    }
+cont:
     client->ta.state = HTTP_STATE_PREPARE_RESPONSE;
     return 0;
 }
@@ -772,6 +833,8 @@ static const char* get_status_string(enum http_response_status status)
             return "200 OK\r\n";
         case HTTP_206_PARTIAL_CONTENT:
             return "206 Partial Content\r\n";
+        case HTTP_304_NOT_MODIFIED:
+            return "304 Not Modified\r\n";
         case HTTP_400_BAD_REQUEST:
             return "400 Bad Request\r\n";
         case HTTP_403_PERMISSION_DENIED:
@@ -798,8 +861,10 @@ static const char* get_status_string(enum http_response_status status)
             return "505 Version Not Supported\r\n";
         case HTTP_507_INSUFFICIENT_STORAGE:
             return "507 Insufficient Storage\r\n";
-        case HTTP_500_INTERNAL_ERROR:
         case HTTP_X_RESP_STATUS_MISSING:
+            fprintf(stderr, "Status missing while getting status string\n");
+            /* fallthrough */
+        case HTTP_500_INTERNAL_ERROR:
         default:
             return "500 Internal Server Error\r\n";
     }
@@ -816,7 +881,7 @@ static void prepare_resp_start(struct http_client* client)
 }
 
 /**
- * Returns true if the given path contains attempted IDOR - /../
+ * Returns true if the given path contains attempted IDOR - /../ or similar
  */
 static bool attempted_idor(char* path)
 {
@@ -865,7 +930,7 @@ static int validate_http_path(struct http_client* client, char* fname)
     }
 
     // regular direct path or the root fallback
-    if (web_root_fallback_path && !strcmp(client->ta.req_path, "/")) {
+    if (!strcmp(client->ta.req_path, "/") && web_root_fallback_path) {
         rc = snprintf(fname, PATH_MAX, "%s/%s", web_root, web_root_fallback_path);
     } else {
         rc = snprintf(fname, PATH_MAX, "%s/%s", web_root, client->ta.req_path);
@@ -939,7 +1004,7 @@ static int handle_static_path(struct http_client* client)
         return -1;
     }
 
-    // validate... told us this exists, so any error here is weird
+    // validate_http_path told us this exists, so any error here is weird
     if (stat(fname, &st)) {
         client->ta.resp_status = HTTP_500_INTERNAL_ERROR;
         return -1;
@@ -984,8 +1049,11 @@ static int handle_static_path(struct http_client* client)
             client->ta.resp_status = HTTP_304_NOT_MODIFIED;
             client->ta.req_method = HTTP_HEAD;  // since the response is otherwise identical
             close_fd_to_zero(&client->ta.resp_fd);
+            return 0;
         }
-    } else if (client->ta.range_requested) {
+        // else cascade below for a standard response
+    }
+    if (client->ta.range_requested) {
         client->ta.resp_status = HTTP_206_PARTIAL_CONTENT;
     } else {
         client->ta.resp_status = HTTP_200_OK;
@@ -998,14 +1066,13 @@ static int handle_static_path(struct http_client* client)
  * Make an error response on a given client
  * If this fails, you're having a very bad time
  */
-static int prepare_error_response(struct http_client* client)
+static int prepare_fresh_error_response(struct http_client* client)
 {
     int rc;
 
-    // discard anything written so far and start over
-    prepare_resp_start(client);
     client->ta.resp_headers_len = 0;
-    // client->resp_body.len = 0;  // except the body
+    client->resp_body.len = 0;
+    close_fd_to_zero(&client->ta.resp_fd);
 
     if ((rc = http_header_add_content_type(client, "text/plain"))) {
         return rc;
@@ -1050,6 +1117,7 @@ static int prepare_error_response(struct http_client* client)
         default:
             return buffer_append(&client->resp_body, "Internal server error.", sizeof("Internal server error.") - 1);
     }
+    return 0;
 }
 
 int http_prepare_response(struct http_client* client)
@@ -1064,7 +1132,7 @@ int http_prepare_response(struct http_client* client)
         goto error_response;
     }
 
-    if (!client->ta.hit_api && handle_static_path(client)) {
+    if (!client->ta.api_endpoint_hit && handle_static_path(client)) {
         // API didn't handle it, and when we tried to do it internally we resulted in an error
         goto error_response;
     }
@@ -1096,14 +1164,20 @@ success:
         client->ta.resp_fd = HTTP_507_INSUFFICIENT_STORAGE;
         goto error_response;
     }
+
     client->ta.state = HTTP_STATE_SEND_START;
     return 0;
 
 error_response:
-    close_fd_to_zero(&client->ta.resp_fd);
-    if (already_errored || prepare_error_response(client)) {
-        // highly unlikely to be salvageable, so just drop the connection
+    // if we error here or end up back here, it is highly unlikely to be salvageable so just drop the connection
+    if (already_errored) {
         return -1;
+    }
+    if (!client->ta.api_endpoint_hit || client->ta.resp_fd < 0) {
+        // our error or the client wants to use the default error response
+        if (prepare_fresh_error_response(client)) {
+            return -1;
+        }
     }
     already_errored = true;
     goto success;
@@ -1159,7 +1233,7 @@ int http_send_resp_body(struct http_client* client)
     }
 
     // have a file to send
-    if (client->ta.resp_fd != 0) {
+    if (client->ta.resp_fd > 0) {
 #ifdef __linux__
         do {
             rc = sendfile(client->sockfd, client->ta.resp_fd, &client->ta.resp_body_pos,

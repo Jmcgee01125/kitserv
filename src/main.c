@@ -15,6 +15,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "api.h"
 #include "auth.h"
 #include "http.h"
 #include "server.h"
@@ -124,9 +125,7 @@ int main(int argc, char* argv[])
     printf("Web root:  %s\n", http_directory);
     printf("Data root: %s\n", filekit_directory);
 
-    // TODO: generate real API tree (probably returned out of some api.h)
-    //       have it return the tree, and take the `filekit_directory` var as an argument
-    http_api_tree = NULL;  // api_init(filekit_directory);
+    http_api_tree = api_init(filekit_directory);
     auth_init(auth_exp_time);
     http_init("FileKit", http_directory, fallback_path, root_fallback_path, true, auth_cookie_name, http_api_tree);
     start_server(port_string, bind_ipv4, bind_ipv6, num_workers, num_slots);

@@ -63,6 +63,7 @@ struct connection* connection_accept(struct connection_container* container, int
     conn->client.sockfd = acceptfd;
 
     // ensure that this connection is fresh
+    // this doesn't ensure everything is reset, but is good enough to detect blatant mistakes
     assert(conn->client.req_headers_len == 0);
     assert(conn->client.resp_body.len == 0);
     assert(conn->client.ta.state == 0);
