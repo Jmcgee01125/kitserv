@@ -993,7 +993,8 @@ static int handle_static_path(struct http_client* client)
     struct tm tm;
     int rc;
 
-    if (client->ta.req_method != HTTP_GET && client->ta.req_method != HTTP_HEAD) {
+    if (!(client->ta.req_method & HTTP_GET)) {
+        // internally, we only allow GET or HEAD
         client->ta.resp_status = HTTP_405_METHOD_NOT_ALLOWED;
         return -1;
     }
