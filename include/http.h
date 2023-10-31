@@ -43,7 +43,7 @@ enum http_parse_state {
 enum http_method {
     HTTP_GET = 1,
     HTTP_PUT = 2,
-    HTTP_HEAD = 5, // intentional overlap with GET, to support checking both using `method & GET`
+    HTTP_HEAD = 5,  // intentional overlap with GET, to support checking both using `method & GET`
     HTTP_POST = 8,
     HTTP_DELETE = 16,
 };
@@ -122,7 +122,7 @@ struct http_transaction {
 
     api_handler_t api_endpoint_hit;  // for re-calling API functions without re-parsing tree, and tracking if run at all
     void* api_internal_data;         // data pointer for API requests - NULL on first call
-    int api_allow_flags;             // used in case parsing matched an endpoint, but did not match allowed method(s)
+    int api_allow_flags;             // http_method bits, used in case parsing matched an endpoint but not method(s)
 };
 
 struct http_client {
@@ -226,7 +226,7 @@ int http_header_add(struct http_client*, char* key, char* fmt, ...);
  */
 int http_header_add_content_type(struct http_client*, char* mime);
 int http_header_add_content_type_guess(struct http_client*, char* extension);
-int http_header_add_set_cookie(struct http_client*, char* fmt, ...);
+int http_header_add_set_cookie(struct http_client*, const char* fmt, ...);
 int http_header_add_last_modified(struct http_client*, time_t time);
 
 /**

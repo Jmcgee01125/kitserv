@@ -129,7 +129,7 @@ static inline void close_fd_to_zero(int* fd)
  * Returns 0 on success, -1 on failure.
  * *offset is not incremented on failure, but buf[offset..max] is undefined.
  */
-static inline int str_vappend(char* buf, int* offset, int max, char* fmt, va_list* ap)
+static inline int str_vappend(char* buf, int* offset, int max, const char* fmt, va_list* ap)
 {
     int rc = vsnprintf(&buf[*offset], max - *offset, fmt, *ap);
     if (rc >= max - *offset) {
@@ -401,7 +401,7 @@ static void url_decode(char* str)
     *r = '\0';
 }
 
-static inline int http_header_add_ap(struct http_client* client, char* key, char* fmt, va_list* ap)
+static inline int http_header_add_ap(struct http_client* client, char* key, const char* fmt, va_list* ap)
 {
     int pre_sz;
     pre_sz = client->ta.resp_headers_len;
@@ -449,12 +449,12 @@ int http_header_add_content_type_guess(struct http_client* client, char* extensi
     return http_header_add(client, "content-type", "%s", guess_mime_type(extension));
 }
 
-int http_header_add_set_cookie(struct http_client* client, char* fmt, ...)
+int http_header_add_set_cookie(struct http_client* client, const char* fmt, ...)
 {
     va_list ap;
     int ret;
     va_start(ap, fmt);
-    ret = http_header_add(client, "cookie", fmt, ap);
+    ret = http_header_add_ap(client, "set-cookie", fmt, &ap);
     va_end(ap);
     return ret;
 }
