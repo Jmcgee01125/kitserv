@@ -755,7 +755,7 @@ static int parse_api_tree(struct http_client* client, char* path, struct http_ap
     int i;
     char* q;
 
-    assert(client->ta.api_allow_flags == 0);
+recurse:
     for (q = path; *q && *q != '/'; q++)
         ;
     for (i = 0; i < current_tree->num_entries; i++) {
@@ -777,7 +777,10 @@ static int parse_api_tree(struct http_client* client, char* path, struct http_ap
     for (i = 0; i < current_tree->num_subtrees; i++) {
         if (current_tree->subtrees[i].prefix_length == q - path &&
             !strncmp(path, api_tree->subtrees[i].prefix, q - path)) {
-            return parse_api_tree(client, q + 1, &current_tree->subtrees[i]);
+            // return parse_api_tree(client, q + 1, &current_tree->subtrees[i]);
+            current_tree = &current_tree->subtrees[i];
+            path = q + 1;
+            goto recurse;
         }
     }
     return 0;
@@ -791,6 +794,7 @@ int http_serve_api(struct http_client* client)
         // haven't been here yet, parse the tree and see if we hit it
         if (!client->ta.api_endpoint_hit) {
             assert(client->ta.api_internal_data == NULL);
+            assert(client->ta.api_allow_flags == 0);
             // cut off leading /, if it exists
             for (p = client->ta.req_path; *p == '/'; p++)
                 ;

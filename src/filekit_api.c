@@ -1,6 +1,7 @@
 /* Part of FileKit, licensed under the GNU Affero GPL. */
 
 #include "api.h"
+#include "auth.h"
 #include "buffer.h"
 #include "http.h"
 
@@ -64,6 +65,7 @@ struct http_api_tree* api_init(char* directory, char* cookie, int expiration_tim
     data_dir = directory;
     cookie_name = cookie;
     cookie_age = expiration_time;
+    auth_init(expiration_time);
     return &api_tree;
 }
 
@@ -91,6 +93,6 @@ static void api_logout_post(struct http_client* client)
 
 static void d(struct http_client* client)
 {
-    buffer_appendf(&client->resp_body, "Serving %s", &client->ta.req_path);
+    buffer_appendf(&client->resp_body, "Serving %s", client->ta.req_path);
     client->ta.resp_status = HTTP_200_OK;
 }

@@ -43,7 +43,7 @@ enum http_parse_state {
 enum http_method {
     HTTP_GET = 1,
     HTTP_PUT = 2,
-    HTTP_HEAD = 5,  // intentional overlap with GET, to support checking both using `method & GET`
+    HTTP_HEAD = 4 | HTTP_GET,  // intentional overlap with GET, to support checking both using `method & GET`
     HTTP_POST = 8,
     HTTP_DELETE = 16,
 };

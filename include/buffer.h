@@ -3,12 +3,7 @@
 #ifndef BUFFER_H
 #define BUFFER_H
 
-#include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-
-#define BUFFER_INCREMENT (256)
 
 typedef struct {
     char* buf;
