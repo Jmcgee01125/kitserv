@@ -42,7 +42,7 @@ static void usage(const char* prog_name)
             "\t-t threads    Number of worker threads to use for serving clients (default: %d).\n"
             "\t-s slots      Number of slots to use per worker thread (default: %d).\n"
             "\t-4            Bind IPv4 only.\n"
-            "\t-6            Bind IPv6 only, or both when dual binding is enabled.\n"
+            "\t-6            Bind IPv6 only, or both when dual binding is enabled (falls back to IPv4 if no IPv6).\n"
             "\t-h            Show this help.\n",
             prog_name, DEFAULT_PORT_STRING, DEFAULT_FALLBACK_PATH, DEFAULT_FALLBACK_ROOT_PATH, DEFAULT_LOGIN_TOKEN_NAME,
             DEFAULT_TOKEN_EXP_TIME, DEFAULT_NUM_WORKERS, DEFAULT_NUM_SLOTS);

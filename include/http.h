@@ -199,7 +199,7 @@ void http_init(char* servername, char* http_directory, char* fallback_path, char
 
 /**
  * Allocate the internal structures of a client and its associated transaction.
- * Return 0 on success, -1 on failure.
+ * Returns 0 on success, -1 on failure.
  */
 int http_create_client_struct(struct http_client*);
 

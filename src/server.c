@@ -30,6 +30,7 @@ struct worker {
 static void* client_worker(void* data)
 {
     struct worker* self = (struct worker*)data;
+    struct connection* conn;
     queue_event events[16];
     int nevents, i;
 
@@ -54,7 +55,7 @@ static void* client_worker(void* data)
             continue;
         }
         for (i = 0; i < nevents; i++) {
-            struct connection* conn = queue_event_to_data(&events[i]);
+            conn = queue_event_to_data(&events[i]);
             if (conn < CONN_FLAG_MAX) {
                 if (conn == CONN_ACCEPT_4) {
                     conn = connection_accept(&self->conn_container, self->acceptfd_ipv4);
@@ -114,6 +115,7 @@ void start_server(char* port_string, bool bind_ipv4, bool bind_ipv6, int num_wor
     }
 
     if (bind_ipv4) {
+attempt_bind_ipv4:
         v4sock = socket_prepare(port_string, false);
         if (v4sock < 0) {
             perror("socket_prepare (ipv4)");
@@ -128,6 +130,10 @@ void start_server(char* port_string, bool bind_ipv4, bool bind_ipv6, int num_wor
                 fprintf(stderr,
                         "\tDual binding may cause this issue.\n"
                         "\tIf your system has dual binding enabled, try running with -6.\n");
+            } else if (errno == EAFNOSUPPORT) {
+                fprintf(stderr, "\tNo IPv6 found. Falling back to IPv4\n");
+                bind_ipv6 = false;
+                goto attempt_bind_ipv4;
             }
             abort();
         }

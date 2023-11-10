@@ -155,6 +155,26 @@ static int str_append(char* buf, int* offset, int max, char* fmt, ...)
     return rc;
 }
 
+/**
+ * Returns true if the given path contains attempted IDOR - /../ or similar
+ */
+static bool attempted_idor(char* path)
+{
+    char* found = strstr(path, "..");
+    if (!found) {
+        return false;
+    }
+    // we don't want to accidentally reject paths like `hello......world!`
+    // first, ensure that .. either ends the path or is followed by a /
+    if (found[2] == '\0' || found[2] == '/') {
+        // if so, ensure it either started the path or was preceded by a /
+        if (path == found || found[-1] == '/') {
+            return true;
+        }
+    }
+    return false;
+}
+
 static inline bool status_is_error(enum http_response_status status)
 {
     return status >= 400;
@@ -609,6 +629,9 @@ method_not_allowed:
             }
             url_decode(p);
             client->ta.req_path = p;
+            if (attempted_idor(client->ta.req_path)) {
+                goto bad_request;
+            }
             parse_advance;
             /* fallthrough */
 
@@ -734,7 +757,7 @@ past_end:
     }
     // no error, just don't have data yet (read hit EAGAIN/EWOULDBLOCK) - save our current position
     client->ta.req_parse_blk = p;
-    client->ta.req_parse_iter = r;
+    client->ta.req_parse_iter = r - 1 > p ? p : r - 1;  // make sure we re-check the given char in this block later
     return 0;
 
 bad_request:
@@ -885,26 +908,6 @@ static void prepare_resp_start(struct http_client* client)
 }
 
 /**
- * Returns true if the given path contains attempted IDOR - /../ or similar
- */
-static bool attempted_idor(char* path)
-{
-    char* found = strstr(path, "..");
-    if (!found) {
-        return false;
-    }
-    // we don't want to accidentally reject paths like `hello......world!`
-    // first, ensure that .. either ends the path or is followed by a /
-    if (found[2] == '\0' || found[2] == '/') {
-        // if so, ensure it either started the path or was preceded by a /
-        if (path == found || found[-1] == '/') {
-            return true;
-        }
-    }
-    return false;
-}
-
-/**
  * Return true if a file is valid, false otherwise, setting errno to indicate the error
  */
 static bool file_is_valid(char* path)
@@ -927,11 +930,6 @@ static bool file_is_valid(char* path)
 static int validate_http_path(struct http_client* client, char* fname)
 {
     int rc;
-
-    if (attempted_idor(client->ta.req_path)) {
-        client->ta.resp_status = HTTP_400_BAD_REQUEST;
-        return -1;
-    }
 
     // regular direct path or the root fallback
     if (!strcmp(client->ta.req_path, "/") && web_root_fallback_path) {
@@ -1272,7 +1270,7 @@ int http_send_resp_body(struct http_client* client)
 
 done:
     client->ta.state = HTTP_STATE_DONE;
-    if (status_is_error(client->ta.resp_status)) {
+    if (status_is_error(client->ta.resp_status) || client->ta.req_version == HTTP_1_0) {
         return -1;
     }
     return 0;
