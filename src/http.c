@@ -539,7 +539,7 @@ int http_recv_request(struct http_client* client)
     char* r = client->ta.req_parse_iter;  // segment iterator
     char *q, *s;                          // extra iters - in between p and r
 
-#define parse_past_end(ptr) (ptr - client->req_headers > client->req_headers_len)
+#define parse_past_end(ptr) (ptr - client->req_headers >= client->req_headers_len)
 #define parse_advance \
     do {              \
         r++;          \
@@ -752,6 +752,7 @@ parse_header:
     }
 
     client->req_payload = p;  // the payload will follow what we've just parsed
+    client->ta.req_payload_len = client->req_headers_len - (client->req_payload - client->req_headers);
     client->ta.state = HTTP_STATE_API;
     return 0;
 
@@ -763,7 +764,7 @@ past_end:
     }
     // no error, just don't have data yet (read hit EAGAIN/EWOULDBLOCK) - save our current position
     client->ta.req_parse_blk = p;
-    client->ta.req_parse_iter = r - 1 > p ? p : r - 1;  // make sure we re-check the given char in this block later
+    client->ta.req_parse_iter = r;
     return 0;
 
 bad_request:
