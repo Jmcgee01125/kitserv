@@ -345,7 +345,7 @@ static int parse_range(struct http_client* client, off_t filesize)
             client->ta.resp_body_end = conv > filesize - 1 ? filesize - 1 : conv;
         } else {
             // bytes=XXX-
-            client->ta.resp_body_end = filesize;
+            client->ta.resp_body_end = filesize - 1;
         }
     } else if (q) {
         // bytes=-YYY
@@ -355,8 +355,8 @@ static int parse_range(struct http_client* client, off_t filesize)
         if (conv > filesize) {
             goto not_satisfiable;
         }
-        client->ta.resp_body_pos = filesize - conv;
-        client->ta.resp_body_end = filesize;
+        client->ta.resp_body_pos = 0;
+        client->ta.resp_body_end = filesize - conv;
     } else {
         // mm yes `bytes=-`, very good
         goto bad_request;
