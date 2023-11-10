@@ -3,6 +3,7 @@
 #include "connection.h"
 
 #include <assert.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -40,7 +41,9 @@ struct connection* connection_accept(struct connection_container* container, int
 
     acceptfd = socket_accept(socket);
     if (acceptfd < 0) {
-        perror("accept");
+        if (errno != EWOULDBLOCK && errno != EAGAIN) {
+            perror("accept");
+        }
         return NULL;
     }
 

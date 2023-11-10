@@ -19,8 +19,8 @@ FileKit's features consist simply of the following:
 
 ## Usage
 
-**For security reasons, it is STRONGLY RECOMMENDED that any publicly-facing
-FileKit instance be run behind a reverse proxy to provide TLS support.**\
+**For security reasons, it is STRONGLY RECOMMENDED that any public FileKit
+instance be run behind a reverse proxy or tunnel to provide TLS support.**\
 FileKit does not provide in-flight encryption as part of its services.
 
 Run the `filekit` executable and pass options as necessary. -w and -d are
