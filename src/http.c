@@ -554,8 +554,13 @@ int http_recv_request(struct http_client* client)
         if (readrc > 0) {
             client->req_headers_len += readrc;
         } else if (readrc == 0 || (readrc < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
-            // EOF or error - we'll handle the EAGAIN / EWOULDBLOCK case later
-            client->ta.resp_status = HTTP_X_HANGUP;
+            if (client->req_headers_len == HTTP_BUFSZ) {
+                // read will return 0 if we filled the buffer
+                client->ta.resp_status = HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE;
+            } else {
+                // EOF or error - we'll handle the EAGAIN / EWOULDBLOCK case later
+                client->ta.resp_status = HTTP_X_HANGUP;
+            }
             return -1;
         }
     } while (readrc > 0);
@@ -758,10 +763,6 @@ parse_header:
 
     /* before jumping to `past_end`, set the parse state to wherever you came from */
 past_end:
-    if (client->req_headers_len == HTTP_BUFSZ) {
-        client->ta.resp_status = HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE;
-        return -1;
-    }
     // no error, just don't have data yet (read hit EAGAIN/EWOULDBLOCK) - save our current position
     client->ta.req_parse_blk = p;
     client->ta.req_parse_iter = r;
@@ -860,11 +861,11 @@ static const char* get_version_string(enum http_version version)
 {
     // space at the end is relevant for easy append to status
     switch (version) {
-        case HTTP_1_1:
-            return "HTTP/1.1 ";
         case HTTP_1_0:
-        default:
             return "HTTP/1.0 ";
+        case HTTP_1_1:
+        default:
+            return "HTTP/1.1 ";
     }
 }
 
@@ -1190,6 +1191,7 @@ success:
 error_response:
     // if we error here or end up back here, it is highly unlikely to be salvageable so just drop the connection
     if (already_errored) {
+        fprintf(stderr, "Unsalvageable handling during error number %d.\n", client->ta.resp_status);
         return -1;
     }
     if (!client->ta.api_endpoint_hit || client->ta.resp_fd < 0) {
