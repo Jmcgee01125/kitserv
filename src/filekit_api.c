@@ -1,5 +1,7 @@
 /* Part of FileKit, licensed under the GNU Affero GPL. */
 
+#include <stdbool.h>
+
 #include "api.h"
 #include "auth.h"
 #include "buffer.h"
@@ -24,18 +26,21 @@ static struct http_api_entry tree_api_entries[3] = {{
                                                         .prefix_length = 5,
                                                         .method = HTTP_GET,
                                                         .handler = api_login_get,
+                                                        .finishes_path = true,
                                                     },
                                                     {
                                                         .prefix = "login",
                                                         .prefix_length = 5,
                                                         .method = HTTP_POST,
                                                         .handler = api_login_post,
+                                                        .finishes_path = true,
                                                     },
                                                     {
                                                         .prefix = "logout",
                                                         .prefix_length = 6,
                                                         .method = HTTP_POST,
                                                         .handler = api_logout_post,
+                                                        .finishes_path = true,
                                                     }};
 
 static struct http_api_tree tree_api_branch = {
@@ -51,6 +56,7 @@ static struct http_api_entry tree_data_entry = {
     .prefix_length = 1,
     .method = HTTP_GET,
     .handler = d,
+    .finishes_path = false,
 };
 
 static struct http_api_tree api_tree = {

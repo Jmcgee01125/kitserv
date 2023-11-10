@@ -189,6 +189,10 @@ static int parse_header_cookie(struct http_client* client, char* value)
     char* q;  // ; or NULL if end
 
     while (1) {
+        // consume whitespace
+        for (; *p == ' ' || *p == '\t'; p++)
+            ;
+
         r = strchr(p, '=');
         if (!r) {
             client->ta.resp_status = HTTP_400_BAD_REQUEST;
@@ -604,8 +608,10 @@ method_not_allowed:
             /* fallthrough */
 
         case HTTP_PS_REQ_PATH:
-            /* '/request/path?query ' */
-            /*  p            s     r/q */
+            /* '/request/path?query '
+             *  ^            ^     ^
+             *  p            s     r/q
+             */
             for (; !parse_past_end(r) && *r != ' '; r++)
                 ;
             if (parse_past_end(r)) {
@@ -776,7 +782,7 @@ bad_request:
 static int parse_api_tree(struct http_client* client, char* path, struct http_api_tree* current_tree)
 {
     int i;
-    char* q;
+    char *q, *r;
 
 recurse:
     for (q = path; *q && *q != '/'; q++)
@@ -784,6 +790,15 @@ recurse:
     for (i = 0; i < current_tree->num_entries; i++) {
         if (current_tree->entries[i].prefix_length == q - path &&
             !strncmp(path, current_tree->entries[i].prefix, q - path)) {
+            // if the entry should finish the current path, make sure it does
+            if (current_tree->entries[i].finishes_path) {
+                for (r = q; *r == '/'; r++)
+                    ;
+                if (*r) {
+                    // didn't finish path
+                    continue;
+                }
+            }
             // matched an endpoint, see if method matches
             client->ta.api_allow_flags |= current_tree->entries[i].method;
             if (client->ta.req_method & current_tree->entries[i].method) {

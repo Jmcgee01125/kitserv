@@ -155,6 +155,7 @@ struct http_api_entry {
     char* prefix;  // prefix of the api endpoint, e.g. "login"
     int prefix_length;
     enum http_method method;  // GET implies HEAD, no need to set HEAD here
+    bool finishes_path;       // if true, do not allow any extra path components after this one (ignore if it does
     /**
      * Function to receive the client so that the api endpoint code can do processing.
      * The client's `req_*` fields will be set before calling, but the payload may only be partially read.
