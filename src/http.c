@@ -37,8 +37,8 @@ void http_init(char* servername, struct http_request_context* http_default_conte
                struct http_api_tree* http_api_list)
 {
     assert(servername);
-    assert(default_context);
-    assert(default_context->root);
+    assert(http_default_context);
+    assert(http_default_context->root);
 
     server_name = servername;
     default_context = http_default_context;
