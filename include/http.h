@@ -75,6 +75,13 @@ enum http_response_status {
     HTTP_507_INSUFFICIENT_STORAGE = 507,
 };
 
+struct http_request_context {
+    char* root;
+    char* root_fallback;            // null to disable, fallback on '/'
+    char* fallback;                 // null to disable, fallback on any request, exact path from root
+    bool use_http_append_fallback;  // append .html on failure
+};
+
 struct http_transaction {
     enum http_transaction_state state;
     enum http_parse_state parse_state;
@@ -193,10 +200,10 @@ struct http_api_tree {
 
 /**
  * Initalize HTTP system.
- * Pass NULL to disable fallbacks, auth, and/or API. Do not pass NULL for others.
+ * auth_cookie_name and http_api_list are nullable.
  */
-void http_init(char* servername, char* http_directory, char* fallback_path, char* root_fallback_path,
-               bool use_http_append_fallback, char* auth_cookie_name, struct http_api_tree* http_api_list);
+void http_init(char* servername, struct http_request_context* http_default_context, char* auth_cookie_name,
+               struct http_api_tree* http_api_list);
 
 /**
  * Allocate the internal structures of a client and its associated transaction.
@@ -229,6 +236,11 @@ int http_header_add_content_type(struct http_client*, char* mime);
 int http_header_add_content_type_guess(struct http_client*, char* extension);
 int http_header_add_set_cookie(struct http_client*, const char* fmt, ...);
 int http_header_add_last_modified(struct http_client*, time_t time);
+
+/**
+ * Handle a static request for client using the given path and context
+ */
+int http_handle_static_path(struct http_client* client, char* path, struct http_request_context* ctx);
 
 /**
  * The following functions process a request.

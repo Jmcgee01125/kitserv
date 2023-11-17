@@ -56,19 +56,24 @@ int main(int argc, char* argv[])
     int num_workers = DEFAULT_NUM_WORKERS;
     int num_slots = DEFAULT_NUM_SLOTS;
     char* port_string = DEFAULT_PORT_STRING;
-    char* fallback_path = DEFAULT_FALLBACK_PATH;
-    char* root_fallback_path = DEFAULT_FALLBACK_ROOT_PATH;
     int auth_exp_time = DEFAULT_TOKEN_EXP_TIME;
     struct http_api_tree* http_api_tree = NULL;
-    char* http_directory = NULL;
     char* filekit_directory = NULL;
     char* auth_cookie_name = DEFAULT_LOGIN_TOKEN_NAME;
+    struct http_request_context http_root_context;
     int opt;
+
+    http_root_context = (struct http_request_context){
+        .root = NULL,
+        .root_fallback = DEFAULT_FALLBACK_ROOT_PATH,
+        .fallback = DEFAULT_FALLBACK_PATH,
+        .use_http_append_fallback = true,
+    };
 
     while ((opt = getopt(argc, argv, "w:d:p:f:r:c:e:t:s:46h")) != -1) {
         switch (opt) {
             case 'w':
-                http_directory = optarg;
+                http_root_context.root = optarg;
                 break;
             case 'd':
                 filekit_directory = optarg;
@@ -77,10 +82,10 @@ int main(int argc, char* argv[])
                 port_string = optarg;
                 break;
             case 'f':
-                fallback_path = optarg;
+                http_root_context.fallback = optarg;
                 break;
             case 'r':
-                root_fallback_path = optarg;
+                http_root_context.root_fallback = optarg;
                 break;
             case 'c':
                 auth_cookie_name = optarg;
@@ -116,16 +121,16 @@ int main(int argc, char* argv[])
         }
     }
 
-    if (!http_directory || !filekit_directory) {
+    if (!http_root_context.root || !filekit_directory) {
         usage(argv[0]);
     }
 
     printf("Starting on port %s.\n", port_string);
-    printf("Web root:  %s\n", http_directory);
+    printf("Web root:  %s\n", http_root_context.root);
     printf("Data root: %s\n", filekit_directory);
 
     http_api_tree = api_init(filekit_directory, auth_cookie_name, auth_exp_time);
-    http_init("FileKit", http_directory, fallback_path, root_fallback_path, true, auth_cookie_name, http_api_tree);
+    http_init("FileKit", &http_root_context, auth_cookie_name, http_api_tree);
     start_server(port_string, bind_ipv4, bind_ipv6, num_workers, num_slots);
 
     return 0;

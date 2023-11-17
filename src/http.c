@@ -28,26 +28,22 @@
 
 #define bufscmp(s, target) (!memcmp(s, target, sizeof(target) - 1))
 
-char* server_name;
-char* web_root;
-char* web_fallback_path;       // may be null
-char* web_root_fallback_path;  // may be null
-bool html_append_fallback;
-char* target_cookie_name = NULL;
-struct http_api_tree* api_tree = NULL;
+static char* server_name;
+static struct http_request_context* default_context;
+static char* target_cookie_name;
+static struct http_api_tree* api_tree;
 
-void http_init(char* servername, char* http_directory, char* fallback_path, char* root_fallback_path,
-               bool use_html_append_fallback, char* auth_cookie_name, struct http_api_tree* http_api_list)
+void http_init(char* servername, struct http_request_context* http_default_context, char* auth_cookie_name,
+               struct http_api_tree* http_api_list)
 {
+    assert(servername);
+    assert(default_context);
+    assert(default_context->root);
+
     server_name = servername;
-    web_root = http_directory;
-    web_fallback_path = fallback_path;
-    web_root_fallback_path = root_fallback_path;
-    html_append_fallback = use_html_append_fallback;
-    if (auth_cookie_name && http_api_list) {
-        target_cookie_name = auth_cookie_name;
-        api_tree = http_api_list;
-    }
+    default_context = http_default_context;
+    target_cookie_name = auth_cookie_name;
+    api_tree = http_api_list;
 }
 
 int http_create_client_struct(struct http_client* client)
@@ -925,87 +921,25 @@ static void prepare_resp_start(struct http_client* client)
 }
 
 /**
- * Return true if a file is valid, false otherwise, setting errno to indicate the error
+ * Verify a given path, stat'ing it into *st
+ * Returns 0 on success, or -1 on error (catastrophic errors also set resp_status)
+ * assumed_pathlen is the size that path was attempted to be, which may be either invalid or too long
+ * (if it is so, then the status is set as 414_URI_TOO_LONG)
  */
-static bool file_is_valid(char* path)
+static int verify_static_path(struct stat* st, struct http_client* client, int assumed_pathlen, char* path)
 {
-    struct stat st;
-    if (stat(path, &st)) {
-        return false;
-    }
-    if (!S_ISREG(st.st_mode)) {
-        errno = EISDIR;
-        return false;
-    }
-    return true;
-}
-
-/**
- * Create and validate a full path into the given string, which must be at least PATH_MAX bytes
- * On error, sets the response status and returns -1
- */
-static int validate_http_path(struct http_client* client, char* fname)
-{
-    int rc;
-
-    // regular direct path or the root fallback
-    if (!strcmp(client->ta.req_path, "/") && web_root_fallback_path) {
-        rc = snprintf(fname, PATH_MAX, "%s/%s", web_root, web_root_fallback_path);
-    } else {
-        rc = snprintf(fname, PATH_MAX, "%s/%s", web_root, client->ta.req_path);
-    }
-    if (rc < 0 || rc >= PATH_MAX) {
+    if (assumed_pathlen < 0 || assumed_pathlen >= PATH_MAX) {
         client->ta.resp_status = HTTP_414_URI_TOO_LONG;
-        return -1;
-    }
-    if (file_is_valid(fname)) {
+    } else if (!stat(path, st) && S_ISREG(st->st_mode)) {
         return 0;
     }
     if (errno == EACCES) {
         client->ta.resp_status = HTTP_403_PERMISSION_DENIED;
-        return -1;
     }
-
-    // append .html and see if it exists
-    if (html_append_fallback) {
-        rc = snprintf(fname, PATH_MAX, "%s/%s.html", web_root, client->ta.req_path);
-        if (rc < 0 || rc >= PATH_MAX) {
-            client->ta.resp_status = HTTP_414_URI_TOO_LONG;
-            return -1;
-        }
-        if (file_is_valid(fname)) {
-            return 0;
-        }
-        if (errno == EACCES) {
-            client->ta.resp_status = HTTP_403_PERMISSION_DENIED;
-            return -1;
-        }
-    }
-
-    // serve the generic fallback
-    if (web_fallback_path) {
-        rc = snprintf(fname, PATH_MAX, "%s/%s", web_root, web_fallback_path);
-        if (rc < 0 || rc >= PATH_MAX) {
-            client->ta.resp_status = HTTP_414_URI_TOO_LONG;
-            return -1;
-        }
-        if (file_is_valid(fname)) {
-            return 0;
-        }
-        if (errno == EACCES) {
-            client->ta.resp_status = HTTP_403_PERMISSION_DENIED;
-            return -1;
-        }
-    }
-
-    client->ta.resp_status = HTTP_404_NOT_FOUND;
     return -1;
 }
 
-/**
- * Handle a static request path - the request is not an API endpoint
- */
-static int handle_static_path(struct http_client* client)
+int http_handle_static_path(struct http_client* client, char* path, struct http_request_context* ctx)
 {
     char fname[PATH_MAX];
     struct stat st;
@@ -1013,22 +947,53 @@ static int handle_static_path(struct http_client* client)
     int rc;
 
     if (!(client->ta.req_method & HTTP_GET)) {
-        // internally, we only allow GET or HEAD
+        // we only allow GET or HEAD here
         client->ta.resp_status = HTTP_405_METHOD_NOT_ALLOWED;
         return -1;
     }
 
-    // TODO: take advantage of the fact that this will call `stat` on our target file, perhaps also have it open it
-    //       maybe just inline it here
-    if (validate_http_path(client, fname)) {
-        return -1;
+    // regular direct path or the root fallback
+    if (!strcmp(client->ta.req_path, "/") && ctx->root_fallback) {
+        rc = snprintf(fname, PATH_MAX, "%s/%s", ctx->root, ctx->root_fallback);
+    } else {
+        rc = snprintf(fname, PATH_MAX, "%s/%s", ctx->root, path);
+    }
+    if (verify_static_path(&st, client, rc, fname)) {
+        if (client->ta.resp_status) {
+            return -1;
+        }
+    } else {
+        goto path_set;
     }
 
-    // validate_http_path told us this exists, so any error here is weird
-    if (stat(fname, &st)) {
-        client->ta.resp_status = HTTP_500_INTERNAL_ERROR;
-        return -1;
+    // failed standard, append .html and see if it exists
+    if (ctx->use_http_append_fallback) {
+        rc = snprintf(fname, PATH_MAX, "%s/%s.html", ctx->root, path);
+        if (verify_static_path(&st, client, rc, fname)) {
+            if (client->ta.resp_status) {
+                return -1;
+            }
+        } else {
+            goto path_set;
+        }
     }
+    // failed .http append, serve the generic fallback
+    if (ctx->fallback) {
+        rc = snprintf(fname, PATH_MAX, "%s/%s", ctx->root, ctx->fallback);
+        if (verify_static_path(&st, client, rc, fname)) {
+            if (client->ta.resp_status) {
+                return -1;
+            }
+        } else {
+            goto path_set;
+        }
+    }
+
+    // could not find a path from above, abort
+    client->ta.resp_status = HTTP_404_NOT_FOUND;
+    return -1;
+
+path_set:
 
     // don't open on a HEAD - we already got our info from the stat
     if (client->ta.req_method == HTTP_GET) {
@@ -1152,7 +1117,7 @@ int http_prepare_response(struct http_client* client)
         goto error_response;
     }
 
-    if (!client->ta.api_endpoint_hit && handle_static_path(client)) {
+    if (!client->ta.api_endpoint_hit && http_handle_static_path(client, client->ta.req_path, default_context)) {
         // API didn't handle it, and when we tried to do it internally we resulted in an error
         goto error_response;
     }
