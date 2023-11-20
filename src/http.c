@@ -791,6 +791,11 @@ static int parse_api_tree(struct http_client* client, char* path, struct http_ap
     int i;
     char *q, *r;
 
+    /* /request/path
+     *  ^      ^
+     *  path   q
+     */
+
 recurse:
     for (q = path; *q && *q != '/'; q++)
         ;

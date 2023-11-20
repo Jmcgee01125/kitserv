@@ -99,6 +99,10 @@ int connection_serve(struct connection* connection)
         switch (*state) {
             case HTTP_STATE_READ:
                 if (http_recv_request(client)) {
+                    if (client->ta.resp_status == HTTP_X_HANGUP) {
+                        // don't bother trying to do anything else
+                        return -1;
+                    }
                     goto prep_response;
                 } else if (*state == HTTP_STATE_READ) {
                     return 0;
@@ -106,6 +110,10 @@ int connection_serve(struct connection* connection)
                 /* fallthrough */
             case HTTP_STATE_API:
                 if (http_serve_api(client)) {
+                    if (client->ta.resp_status == HTTP_X_HANGUP) {
+                        // don't bother trying to do anything else
+                        return -1;
+                    }
                     goto prep_response;
                 } else if (*state == HTTP_STATE_API) {
                     return 0;
