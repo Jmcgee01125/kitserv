@@ -81,9 +81,10 @@ void http_finalize_transaction(struct http_client* client)
 {
     // in case the client sent part of their next request into the buffers for this one
     // so, what we considered the payload length is actually now the header length
-    assert(client->ta.req_payload_pos + client->ta.req_payload_len <= HTTP_BUFSZ);
-    memmove(client->req_headers, &client->req_payload[client->ta.req_payload_pos], client->ta.req_payload_len);
-    client->req_headers_len = client->ta.req_payload_len;
+    const int remaining_payload = client->ta.req_payload_len - client->ta.req_payload_pos;
+    assert(remaining_payload >= 0 && remaining_payload <= HTTP_BUFSZ);
+    memmove(client->req_headers, &client->req_payload[client->ta.req_payload_pos], remaining_payload);
+    client->req_headers_len = remaining_payload;
     cleanup_client(client);
 }
 
@@ -152,9 +153,9 @@ static int str_append(char* buf, int* offset, int max, char* fmt, ...)
 }
 
 /**
- * Returns true if the given path contains attempted IDOR - /../ or similar
+ * Returns true if the given path contains attempted path traversal - /../ or similar
  */
-static bool attempted_idor(char* path)
+static bool attempted_path_traversal(char* path)
 {
     char* found = strstr(path, "..");
     if (!found) {
@@ -542,24 +543,39 @@ int http_recv_request(struct http_client* client)
         p = r;        \
     } while (0)
 
-    // always start by trying to read some more off of the connection, since otherwise we wouldn't be here
-    // (there is one special case where we might already have a request, but it's fine to just assume we try to read)
-    do {
-        readrc =
-            read(client->sockfd, &client->req_headers[client->req_headers_len], HTTP_BUFSZ - client->req_headers_len);
-        if (readrc > 0) {
-            client->req_headers_len += readrc;
-        } else if (readrc == 0 || (readrc < 0 && errno != EAGAIN && errno != EWOULDBLOCK)) {
-            if (client->req_headers_len == HTTP_BUFSZ) {
-                // read will return 0 if we filled the buffer
-                client->ta.resp_status = HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE;
+    /* before jumping to `past_end`, set the parse state to wherever you came from */
+past_end:
+    readrc = read(client->sockfd, &client->req_headers[client->req_headers_len], HTTP_BUFSZ - client->req_headers_len);
+    if (readrc <= 0) {
+        // a few different cases to catch:
+        // 1) -1 - socket is blocking            - save parsing and return 0
+        // 2) -1 - socket is error               - indicate hangup and return -1
+        // 3) 0  - header buffer full, parsed    - prepare for a 431 error and return -1
+        // 4) 0  - header buffer full, unparsed  - parse as much as we can, hope that it fit (continue to parser)
+        // 5) 0  - socket has hit EOF            - indicate hangup and return -1
+        if (readrc != 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
+                client->ta.req_parse_blk = p;
+                client->ta.req_parse_iter = r;
+                return 0;
             } else {
-                // EOF or error - we'll handle the EAGAIN / EWOULDBLOCK case later
                 client->ta.resp_status = HTTP_X_HANGUP;
+                return -1;
             }
-            return -1;
+        } else {
+            if (client->req_headers_len >= HTTP_BUFSZ) {
+                if (parse_past_end(p)) {
+                    client->ta.resp_status = HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE;
+                    return -1;
+                }
+                // ignore else case here - we want to cascade to the parser below
+            } else {
+                client->ta.resp_status = HTTP_X_HANGUP;
+                return -1;
+            }
         }
-    } while (readrc > 0);
+    }
+    client->req_headers_len += readrc;
 
     switch (client->ta.parse_state) {
         case HTTP_PS_NEW:
@@ -636,7 +652,7 @@ method_not_allowed:
             }
             url_decode(p);
             client->ta.req_path = p;
-            if (attempted_idor(client->ta.req_path)) {
+            if (attempted_path_traversal(client->ta.req_path)) {
                 goto bad_request;
             }
             parse_advance;
@@ -755,13 +771,6 @@ parse_header:
     client->req_payload = p;  // the payload will follow what we've just parsed
     client->ta.req_payload_len = client->req_headers_len - (client->req_payload - client->req_headers);
     client->ta.state = HTTP_STATE_API;
-    return 0;
-
-    /* before jumping to `past_end`, set the parse state to wherever you came from */
-past_end:
-    // no error, just don't have data yet (read hit EAGAIN/EWOULDBLOCK) - save our current position
-    client->ta.req_parse_blk = p;
-    client->ta.req_parse_iter = r;
     return 0;
 
 bad_request:

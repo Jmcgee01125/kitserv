@@ -169,6 +169,8 @@ struct http_api_entry {
      * Write custom headers, if necessary, using `http_add_header*(...)`. Do not set content-length or server.
      * Write response data, if necessary, into `client->resp_body` (see `buffer_append(...)`).
      * Write custom file to send, if necessary, into `client->ta.resp_fd`. Leave 0 otherwise. See that field's comment.
+     * If using the payload, be sure to increment `client->ta.req_payload_pos` to the end of your processing.
+     *      (Otherwise, it will be assumed to be part of the header of the next request).
      * Set `client->ta.resp_status` before returning to indicate the result of processing.
      * If `client->ta.resp_status` is not set, will assume that payload reads hit EAGAIN. APIs may make use of
      *      `client->ta.api_internal_data` to remember information when called again (more data available).
