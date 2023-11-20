@@ -133,6 +133,7 @@ attempt_bind_ipv4:
             } else if (errno == EAFNOSUPPORT) {
                 fprintf(stderr, "\tNo IPv6 found. Falling back to IPv4\n");
                 bind_ipv6 = false;
+                v6sock = 0;
                 goto attempt_bind_ipv4;
             }
             abort();
