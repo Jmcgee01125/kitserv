@@ -50,28 +50,31 @@ int http_create_client_struct(struct http_client* client)
 {
     assert(client != NULL);
     if (!(client->req_headers = malloc(HTTP_BUFSZ * 2))) {
-        return -1;
+        goto err_reqheaders;
     }
     if (!(client->resp_start = malloc(HTTP_BUFSZ))) {
-        free(client->req_headers);
-        return -1;
+        goto err_respstart;
     }
     if (!(client->resp_headers = malloc(HTTP_BUFSZ))) {
-        free(client->req_headers);
-        free(client->resp_start);
-        return -1;
+        goto err_respheaders;
     }
     if (buffer_init(&client->resp_body, HTTP_BUFSZ)) {
-        free(client->req_headers);
-        free(client->resp_start);
-        free(client->resp_headers);
-        return -1;
+        goto err_respbody;
     }
     http_reset_client(client);
     return 0;
+
+err_respbody:
+    free(client->resp_headers);
+err_respheaders:
+    free(client->resp_start);
+err_respstart:
+    free(client->req_headers);
+err_reqheaders:
+    return -1;
 }
 
-static void cleanup_client(struct http_client* client)
+static inline void cleanup_client(struct http_client* client)
 {
     memset(&client->ta, 0, sizeof(struct http_transaction));
     buffer_reset(&client->resp_body, HTTP_BUFSZ);
@@ -491,12 +494,12 @@ int http_header_add_last_modified(struct http_client* client, time_t time)
     return http_header_add(client, "last-modified", "%s", buf);
 }
 
-static int http_header_add_content_range(struct http_client* client, off_t start, off_t end, off_t total)
+static inline int http_header_add_content_range(struct http_client* client, off_t start, off_t end, off_t total)
 {
     return http_header_add(client, "content-range", "bytes %ld-%ld/%ld", start, end, total);
 }
 
-static int http_header_add_content_length(struct http_client* client, off_t length)
+static inline int http_header_add_content_length(struct http_client* client, off_t length)
 {
     return http_header_add(client, "content-length", "%ld", length);
 }
@@ -867,15 +870,16 @@ cont:
     return 0;
 }
 
-static const char* get_version_string(enum http_version version)
+static inline const char* get_version_string(enum http_version version)
 {
     // space at the end is relevant for easy append to status
-    switch (version) {
-        case HTTP_1_0:
-            return "HTTP/1.0 ";
-        case HTTP_1_1:
-        default:
-            return "HTTP/1.1 ";
+    if (version == HTTP_1_1) {
+        return "HTTP/1.1 ";
+    } else if (version == HTTP_1_0) {
+        return "HTTP/1.0 ";
+    } else {
+        fprintf(stderr, "Unknown HTTP version: %d (using HTTP/1.1)\n", version);
+        return "HTTP/1.1 ";
     }
 }
 
@@ -924,7 +928,7 @@ static const char* get_status_string(enum http_response_status status)
     }
 }
 
-static void prepare_resp_start(struct http_client* client)
+static inline void prepare_resp_start(struct http_client* client)
 {
     // should always fit, unless some idiot changed HTTP_BUFSZ to be really small
     client->ta.resp_start_len = 0;
