@@ -108,14 +108,14 @@ int connection_serve(struct connection* connection)
                     return 0;
                 }
                 /* fallthrough */
-            case HTTP_STATE_API:
-                if (http_serve_api(client)) {
+            case HTTP_STATE_SERVE:
+                if (http_serve_request(client)) {
                     if (client->ta.resp_status == HTTP_X_HANGUP) {
                         // don't bother trying to do anything else
                         return -1;
                     }
                     goto prep_response;
-                } else if (*state == HTTP_STATE_API) {
+                } else if (*state == HTTP_STATE_SERVE) {
                     return 0;
                 }
                 /* fallthrough */

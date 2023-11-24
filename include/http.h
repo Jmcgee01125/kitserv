@@ -19,7 +19,7 @@ typedef void (*api_handler_t)(struct http_client* client);
 
 enum http_transaction_state {
     HTTP_STATE_READ = 0,
-    HTTP_STATE_API,
+    HTTP_STATE_SERVE,
     HTTP_STATE_PREPARE_RESPONSE,
     HTTP_STATE_SEND_START,
     HTTP_STATE_SEND_HEAD,
@@ -240,7 +240,8 @@ int http_header_add_set_cookie(struct http_client*, const char* fmt, ...);
 int http_header_add_last_modified(struct http_client*, time_t time);
 
 /**
- * Handle a static request for client using the given path and context
+ * Handle a static request for client using the given path and context.
+ * On error, returns -1 and sets client->ta.resp_status
  */
 int http_handle_static_path(struct http_client* client, char* path, struct http_request_context* ctx);
 
@@ -252,7 +253,7 @@ int http_handle_static_path(struct http_client* client, char* path, struct http_
  * On error, skip to http_prepare_response and continue (ignore state) or, if past, close the connection.
  */
 int http_recv_request(struct http_client* client);
-int http_serve_api(struct http_client* client);
+int http_serve_request(struct http_client* client);
 int http_prepare_response(struct http_client* client);
 int http_send_resp_start(struct http_client* client);
 int http_send_resp_head(struct http_client* client);

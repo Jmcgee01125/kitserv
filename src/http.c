@@ -773,7 +773,7 @@ parse_header:
 
     client->req_payload = p;  // the payload will follow what we've just parsed
     client->ta.req_payload_len = client->req_headers_len - (client->req_payload - client->req_headers);
-    client->ta.state = HTTP_STATE_API;
+    client->ta.state = HTTP_STATE_SERVE;
     return 0;
 
 bad_request:
@@ -785,163 +785,9 @@ bad_request:
 }
 
 /**
- * Parse API tree for a given client, writing their handler if any is found (otherwise unchanged).
- * Return 0 if parsing either succeeded or found no matches.
- * Return -1 if parsing found a match for the path, but not the method.
- */
-static int parse_api_tree(struct http_client* client, char* path, struct http_api_tree* current_tree)
-{
-    int i;
-    char *q, *r;
-
-    /* /request/path
-     *  ^      ^
-     *  path   q
-     */
-
-recurse:
-    for (q = path; *q && *q != '/'; q++)
-        ;
-    for (i = 0; i < current_tree->num_entries; i++) {
-        if (current_tree->entries[i].prefix_length == q - path &&
-            !strncmp(path, current_tree->entries[i].prefix, q - path)) {
-            // if the entry should finish the current path, make sure it does
-            if (current_tree->entries[i].finishes_path) {
-                for (r = q; *r == '/'; r++)
-                    ;
-                if (*r) {
-                    // didn't finish path
-                    continue;
-                }
-            }
-            // matched an endpoint, see if method matches
-            client->ta.api_allow_flags |= current_tree->entries[i].method;
-            if (client->ta.req_method & current_tree->entries[i].method) {
-                client->ta.api_endpoint_hit = current_tree->entries[i].handler;
-                return 0;
-            }
-        }
-    }
-    if (client->ta.api_allow_flags) {
-        // we hit an endpoint but didn't match any of its methods - stop parsing
-        client->ta.resp_status = HTTP_405_METHOD_NOT_ALLOWED;
-        return -1;
-    }
-    for (i = 0; i < current_tree->num_subtrees; i++) {
-        if (current_tree->subtrees[i].prefix_length == q - path &&
-            !strncmp(path, api_tree->subtrees[i].prefix, q - path)) {
-            // return parse_api_tree(client, q + 1, &current_tree->subtrees[i]);
-            current_tree = &current_tree->subtrees[i];
-            path = q + 1;
-            goto recurse;
-        }
-    }
-    return 0;
-}
-
-int http_serve_api(struct http_client* client)
-{
-    char* p;
-
-    if (api_tree) {
-        // haven't been here yet, parse the tree and see if we hit it
-        if (!client->ta.api_endpoint_hit) {
-            assert(client->ta.api_internal_data == NULL);
-            assert(client->ta.api_allow_flags == 0);
-            // cut off leading /, if it exists
-            for (p = client->ta.req_path; *p == '/'; p++)
-                ;
-            if (parse_api_tree(client, p, api_tree)) {
-                goto cont;
-            }
-        }
-
-        // hit an endpoint, call to it
-        if (client->ta.api_endpoint_hit) {
-            client->ta.api_endpoint_hit(client);
-            // they must set resp_status to indicate advancement
-            if (client->ta.resp_status == HTTP_X_RESP_STATUS_MISSING) {
-                return 0;
-            }
-        }
-    }
-cont:
-    client->ta.state = HTTP_STATE_PREPARE_RESPONSE;
-    return 0;
-}
-
-static inline const char* get_version_string(enum http_version version)
-{
-    // space at the end is relevant for easy append to status
-    if (version == HTTP_1_1) {
-        return "HTTP/1.1 ";
-    } else if (version == HTTP_1_0) {
-        return "HTTP/1.0 ";
-    } else {
-        fprintf(stderr, "Unknown HTTP version: %d (using HTTP/1.1)\n", version);
-        return "HTTP/1.1 ";
-    }
-}
-
-static const char* get_status_string(enum http_response_status status)
-{
-    // \r\n since we're always going to add it anyway
-    switch (status) {
-        case HTTP_200_OK:
-            return "200 OK\r\n";
-        case HTTP_206_PARTIAL_CONTENT:
-            return "206 Partial Content\r\n";
-        case HTTP_304_NOT_MODIFIED:
-            return "304 Not Modified\r\n";
-        case HTTP_400_BAD_REQUEST:
-            return "400 Bad Request\r\n";
-        case HTTP_403_PERMISSION_DENIED:
-            return "403 Permission Denied\r\n";
-        case HTTP_404_NOT_FOUND:
-            return "404 Not Found\r\n";
-        case HTTP_405_METHOD_NOT_ALLOWED:
-            return "405 Method Not Allowed\r\n";
-        case HTTP_408_REQUEST_TIMEOUT:
-            return "408 Request Timeout\r\n";
-        case HTTP_413_CONTENT_TOO_LARGE:
-            return "413 Content Too Large\r\n";
-        case HTTP_414_URI_TOO_LONG:
-            return "414 URI Too Long\r\n";
-        case HTTP_416_RANGE_NOT_SATISFIABLE:
-            return "416 Range Not Satisfiable\r\n";
-        case HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE:
-            return "431 Request Header Fields Too Large\r\n";
-        case HTTP_501_NOT_IMPLEMENTED:
-            return "501 Not Implemented\r\n";
-        case HTTP_503_SERVICE_UNAVAILABLE:
-            return "503 Service Unavailable\r\n";
-        case HTTP_505_VERSION_NOT_SUPPORTED:
-            return "505 Version Not Supported\r\n";
-        case HTTP_507_INSUFFICIENT_STORAGE:
-            return "507 Insufficient Storage\r\n";
-        case HTTP_X_RESP_STATUS_MISSING:
-            fprintf(stderr, "Status missing while getting status string\n");
-            /* fallthrough */
-        case HTTP_500_INTERNAL_ERROR:
-        default:
-            return "500 Internal Server Error\r\n";
-    }
-}
-
-static inline void prepare_resp_start(struct http_client* client)
-{
-    // should always fit, unless some idiot changed HTTP_BUFSZ to be really small
-    client->ta.resp_start_len = 0;
-    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ, "%s",
-               get_version_string(client->ta.req_version));
-    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ, "%s",
-               get_status_string(client->ta.resp_status));
-}
-
-/**
  * Verify a given path, stat'ing it into *st
  * Returns 0 on success, or -1 on error (catastrophic errors also set resp_status)
- * assumed_pathlen is the size that path was attempted to be, which may be either invalid or too long
+ * assumed_pathlen is the size that path was attempted to be, which may be either invalid or too long (>= PATH_MAX)
  * (if it is so, then the status is set as 414_URI_TOO_LONG)
  */
 static int verify_static_path(struct stat* st, struct http_client* client, int assumed_pathlen, char* path)
@@ -1066,6 +912,162 @@ path_set:
 }
 
 /**
+ * Parse API tree for a given client, writing their handler if any is found (otherwise unchanged).
+ * Return 0 if parsing either succeeded or found no matches.
+ * Return -1 if parsing found a match for the path, but not the method.
+ */
+static int parse_api_tree(struct http_client* client, char* path, struct http_api_tree* current_tree)
+{
+    int i;
+    char *q, *r;
+
+    /* /request/path
+     *  ^      ^
+     *  path   q
+     */
+
+recurse:
+    for (q = path; *q && *q != '/'; q++)
+        ;
+    for (i = 0; i < current_tree->num_entries; i++) {
+        if (current_tree->entries[i].prefix_length == q - path &&
+            !strncmp(path, current_tree->entries[i].prefix, q - path)) {
+            // if the entry should finish the current path, make sure it does
+            if (current_tree->entries[i].finishes_path) {
+                for (r = q; *r == '/'; r++)
+                    ;
+                if (*r) {
+                    // didn't finish path
+                    continue;
+                }
+            }
+            // matched an endpoint, see if method matches
+            client->ta.api_allow_flags |= current_tree->entries[i].method;
+            if (client->ta.req_method & current_tree->entries[i].method) {
+                client->ta.api_endpoint_hit = current_tree->entries[i].handler;
+                return 0;
+            }
+        }
+    }
+    if (client->ta.api_allow_flags) {
+        // we hit an endpoint but didn't match any of its methods - stop parsing
+        client->ta.resp_status = HTTP_405_METHOD_NOT_ALLOWED;
+        return -1;
+    }
+    for (i = 0; i < current_tree->num_subtrees; i++) {
+        if (current_tree->subtrees[i].prefix_length == q - path &&
+            !strncmp(path, api_tree->subtrees[i].prefix, q - path)) {
+            // return parse_api_tree(client, q + 1, &current_tree->subtrees[i]);
+            current_tree = &current_tree->subtrees[i];
+            path = q + 1;
+            goto recurse;
+        }
+    }
+    return 0;
+}
+
+int http_serve_request(struct http_client* client)
+{
+    char* p;
+
+    if (api_tree) {
+        // haven't been here yet, parse the tree and see if we hit it
+        if (!client->ta.api_endpoint_hit) {
+            assert(client->ta.api_internal_data == NULL);
+            assert(client->ta.api_allow_flags == 0);
+            // cut off leading /, if it exists
+            for (p = client->ta.req_path; *p == '/'; p++)
+                ;
+            if (parse_api_tree(client, p, api_tree)) {
+                goto cont;
+            }
+        }
+
+        // hit an endpoint, call to it
+        if (client->ta.api_endpoint_hit) {
+            client->ta.api_endpoint_hit(client);
+            // they must set resp_status to indicate advancement
+            if (client->ta.resp_status == HTTP_X_RESP_STATUS_MISSING) {
+                return 0;
+            }
+        }
+    }
+    // if here, it's an internal request (either because it didn't match or there was no API tree)
+    http_handle_static_path(client, client->ta.req_path, default_context);
+cont:
+    client->ta.state = HTTP_STATE_PREPARE_RESPONSE;
+    return 0;
+}
+
+static inline const char* get_version_string(enum http_version version)
+{
+    // space at the end is relevant for easy append to status
+    if (version == HTTP_1_1) {
+        return "HTTP/1.1 ";
+    } else if (version == HTTP_1_0) {
+        return "HTTP/1.0 ";
+    } else {
+        fprintf(stderr, "Unknown HTTP version: %d (using HTTP/1.1)\n", version);
+        return "HTTP/1.1 ";
+    }
+}
+
+static const char* get_status_string(enum http_response_status status)
+{
+    // \r\n since we're always going to add it anyway
+    switch (status) {
+        case HTTP_200_OK:
+            return "200 OK\r\n";
+        case HTTP_206_PARTIAL_CONTENT:
+            return "206 Partial Content\r\n";
+        case HTTP_304_NOT_MODIFIED:
+            return "304 Not Modified\r\n";
+        case HTTP_400_BAD_REQUEST:
+            return "400 Bad Request\r\n";
+        case HTTP_403_PERMISSION_DENIED:
+            return "403 Permission Denied\r\n";
+        case HTTP_404_NOT_FOUND:
+            return "404 Not Found\r\n";
+        case HTTP_405_METHOD_NOT_ALLOWED:
+            return "405 Method Not Allowed\r\n";
+        case HTTP_408_REQUEST_TIMEOUT:
+            return "408 Request Timeout\r\n";
+        case HTTP_413_CONTENT_TOO_LARGE:
+            return "413 Content Too Large\r\n";
+        case HTTP_414_URI_TOO_LONG:
+            return "414 URI Too Long\r\n";
+        case HTTP_416_RANGE_NOT_SATISFIABLE:
+            return "416 Range Not Satisfiable\r\n";
+        case HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE:
+            return "431 Request Header Fields Too Large\r\n";
+        case HTTP_501_NOT_IMPLEMENTED:
+            return "501 Not Implemented\r\n";
+        case HTTP_503_SERVICE_UNAVAILABLE:
+            return "503 Service Unavailable\r\n";
+        case HTTP_505_VERSION_NOT_SUPPORTED:
+            return "505 Version Not Supported\r\n";
+        case HTTP_507_INSUFFICIENT_STORAGE:
+            return "507 Insufficient Storage\r\n";
+        case HTTP_X_RESP_STATUS_MISSING:
+            fprintf(stderr, "Status missing while getting status string\n");
+            /* fallthrough */
+        case HTTP_500_INTERNAL_ERROR:
+        default:
+            return "500 Internal Server Error\r\n";
+    }
+}
+
+static inline void prepare_resp_start(struct http_client* client)
+{
+    // should always fit, unless some idiot changed HTTP_BUFSZ to be really small
+    client->ta.resp_start_len = 0;
+    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ, "%s",
+               get_version_string(client->ta.req_version));
+    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ, "%s",
+               get_status_string(client->ta.resp_status));
+}
+
+/**
  * Make an error response on a given client
  * If this fails, you're having a very bad time
  */
@@ -1132,11 +1134,6 @@ int http_prepare_response(struct http_client* client)
     }
 
     if (status_is_error(client->ta.resp_status)) {
-        goto error_response;
-    }
-
-    if (!client->ta.api_endpoint_hit && http_handle_static_path(client, client->ta.req_path, default_context)) {
-        // API didn't handle it, and when we tried to do it internally we resulted in an error
         goto error_response;
     }
 

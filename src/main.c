@@ -131,7 +131,7 @@ int main(int argc, char* argv[])
 
     http_api_tree = api_init(filekit_directory, auth_cookie_name, auth_exp_time);
     http_init("FileKit", &http_root_context, auth_cookie_name, http_api_tree);
-    start_server(port_string, bind_ipv4, bind_ipv6, num_workers, num_slots);
+    server_start(port_string, bind_ipv4, bind_ipv6, num_workers, num_slots);
 
     return 0;
 }

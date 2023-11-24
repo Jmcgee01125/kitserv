@@ -82,7 +82,7 @@ static void* client_worker(void* data)
     return NULL;
 }
 
-void start_server(char* port_string, bool bind_ipv4, bool bind_ipv6, int num_workers, int num_slots)
+void server_start(char* port_string, bool bind_ipv4, bool bind_ipv6, int num_workers, int num_slots)
 {
     int v4sock = 0;
     int v6sock = 0;
