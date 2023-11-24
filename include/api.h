@@ -8,8 +8,8 @@
 /**
  * Initialize the API for the target API.
  * The API is indicated to run in the associated directory.
- * Returns the API tree to be parsed by the HTTP system.
+ * Gives API information in out parameters.
  */
-struct http_api_tree* api_init(char* directory, char* cookie, int expiration_time);
+void api_init(struct http_api_tree** out_api_tree, char** out_cookie_name, char* directory, int expiration_time);
 
 #endif

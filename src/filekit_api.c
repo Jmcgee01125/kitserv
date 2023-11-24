@@ -8,12 +8,12 @@
 #include "http.h"
 
 /**
- * Parameters: %s name, %s value, %d max age
+ * Parameters: %s value, %d max age
  */
-static const char* COOKIE_FMT = "%s=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict";
+static const char* COOKIE_FMT = "%s=filekit_auth; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict";
+static char* COOKIE_NAME = "filekit_auth";
 
 static char* data_dir;
-static char* cookie_name;
 static int cookie_age;
 
 static void api_login_get(struct http_client*);
@@ -66,13 +66,13 @@ static struct http_api_tree api_tree = {
     .num_entries = 1,
 };
 
-struct http_api_tree* api_init(char* directory, char* cookie, int expiration_time)
+void api_init(struct http_api_tree** out_api_tree, char** out_cookie_name, char* directory, int expiration_time)
 {
+    *out_api_tree = &api_tree;
+    *out_cookie_name = COOKIE_NAME;
     data_dir = directory;
-    cookie_name = cookie;
     cookie_age = expiration_time;
     auth_init(expiration_time);
-    return &api_tree;
 }
 
 static void api_login_get(struct http_client* client)
@@ -87,13 +87,13 @@ static void api_login_get(struct http_client* client)
 
 static void api_login_post(struct http_client* client)
 {
-    http_header_add_set_cookie(client, COOKIE_FMT, cookie_name, "debug_token", cookie_age);
+    http_header_add_set_cookie(client, COOKIE_FMT, "debug_token", cookie_age);
     client->ta.resp_status = HTTP_200_OK;
 }
 
 static void api_logout_post(struct http_client* client)
 {
-    http_header_add_set_cookie(client, COOKIE_FMT, cookie_name, "", cookie_age);
+    http_header_add_set_cookie(client, COOKIE_FMT, "", cookie_age);
     client->ta.resp_status = HTTP_200_OK;
 }
 

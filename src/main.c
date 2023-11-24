@@ -22,7 +22,6 @@
 #define DEFAULT_PORT_STRING ("8012")
 #define DEFAULT_FALLBACK_PATH ("200.html")
 #define DEFAULT_FALLBACK_ROOT_PATH ("index.html")
-#define DEFAULT_LOGIN_TOKEN_NAME ("filekit_auth")
 #define DEFAULT_TOKEN_EXP_TIME (60 * 60)
 #define DEFAULT_NUM_WORKERS (2)
 #define DEFAULT_NUM_SLOTS (128)
@@ -30,22 +29,21 @@
 static void usage(const char* prog_name)
 {
     fprintf(stderr,
-            "Usage: %s -w webdir -d datadir [-p port] [-f fallback] [-r root_fb] [-c name] [-e seconds] [-t threads] "
+            "Usage: %s -w webdir -d datadir [-p port] [-f fallback] [-r root_fb] [-e seconds] [-t threads] "
             "[-s slots] [-4] [-6] [-h]\n"
             "\t-w webdir     Root directory from which to serve frontend files.\n"
             "\t-d datadir    Root directory to hold data files.\n"
             "\t-p port       Port to run on (default: %s).\n"
             "\t-f fallback   Path to fallback resource (default: %s).\n"
             "\t-r root_fb    Path to fallback resource when the path is / (default: %s).\n"
-            "\t-c name       Name of auth cookie (default: %s).\n"
             "\t-e seconds    Login token expiration time, in seconds (default: %d).\n"
             "\t-t threads    Number of worker threads to use for serving clients (default: %d).\n"
             "\t-s slots      Number of slots to use per worker thread (default: %d).\n"
             "\t-4            Bind IPv4 only.\n"
             "\t-6            Bind IPv6 only, or both when dual binding is enabled (falls back to IPv4 if no IPv6).\n"
             "\t-h            Show this help.\n",
-            prog_name, DEFAULT_PORT_STRING, DEFAULT_FALLBACK_PATH, DEFAULT_FALLBACK_ROOT_PATH, DEFAULT_LOGIN_TOKEN_NAME,
-            DEFAULT_TOKEN_EXP_TIME, DEFAULT_NUM_WORKERS, DEFAULT_NUM_SLOTS);
+            prog_name, DEFAULT_PORT_STRING, DEFAULT_FALLBACK_PATH, DEFAULT_FALLBACK_ROOT_PATH, DEFAULT_TOKEN_EXP_TIME,
+            DEFAULT_NUM_WORKERS, DEFAULT_NUM_SLOTS);
     exit(1);
 }
 
@@ -58,8 +56,8 @@ int main(int argc, char* argv[])
     char* port_string = DEFAULT_PORT_STRING;
     int auth_exp_time = DEFAULT_TOKEN_EXP_TIME;
     struct http_api_tree* http_api_tree = NULL;
+    char* http_cookie_name;
     char* filekit_directory = NULL;
-    char* auth_cookie_name = DEFAULT_LOGIN_TOKEN_NAME;
     struct http_request_context http_root_context;
     int opt;
 
@@ -70,7 +68,7 @@ int main(int argc, char* argv[])
         .use_http_append_fallback = true,
     };
 
-    while ((opt = getopt(argc, argv, "w:d:p:f:r:c:e:t:s:46h")) != -1) {
+    while ((opt = getopt(argc, argv, "w:d:p:f:r:e:t:s:46h")) != -1) {
         switch (opt) {
             case 'w':
                 http_root_context.root = optarg;
@@ -86,9 +84,6 @@ int main(int argc, char* argv[])
                 break;
             case 'r':
                 http_root_context.root_fallback = optarg;
-                break;
-            case 'c':
-                auth_cookie_name = optarg;
                 break;
             case 'e':
                 auth_exp_time = atoi(optarg);
@@ -129,8 +124,8 @@ int main(int argc, char* argv[])
     printf("Web root:  %s\n", http_root_context.root);
     printf("Data root: %s\n", filekit_directory);
 
-    http_api_tree = api_init(filekit_directory, auth_cookie_name, auth_exp_time);
-    http_init("FileKit", &http_root_context, auth_cookie_name, http_api_tree);
+    api_init(&http_api_tree, &http_cookie_name, filekit_directory, auth_exp_time);
+    http_init("FileKit", &http_root_context, http_cookie_name, http_api_tree);
     server_start(port_string, bind_ipv4, bind_ipv6, num_workers, num_slots);
 
     return 0;
