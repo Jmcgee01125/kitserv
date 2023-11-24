@@ -990,6 +990,7 @@ int http_serve_request(struct http_client* client)
             if (client->ta.resp_status == HTTP_X_RESP_STATUS_MISSING) {
                 return 0;
             }
+            goto cont;
         }
     }
     // if here, it's an internal request (either because it didn't match or there was no API tree)
