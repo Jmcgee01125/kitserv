@@ -38,7 +38,7 @@ static int socket_setnonblock(int socket)
  * Bind to a port of the given family.
  * Returns socket fd, or -1 on error.
  */
-static int find_and_bind_socket(const char* port_string, int family)
+static int find_and_bind_socket(const char* port_string, int family, bool nonblock)
 {
     int rc, s, opt;
     char addr_name[1024];
@@ -83,12 +83,14 @@ static int find_and_bind_socket(const char* port_string, int family)
             return -1;
         }
 
-        rc = socket_setnonblock(s);
-        if (rc < 0) {
-            perror("socket_setnonblock");
-            close(s);
-            freeaddrinfo(info);
-            return -1;
+        if (nonblock) {
+            rc = socket_setnonblock(s);
+            if (rc < 0) {
+                perror("socket_setnonblock");
+                close(s);
+                freeaddrinfo(info);
+                return -1;
+            }
         }
 
         rc = bind(s, pinfo->ai_addr, pinfo->ai_addrlen);
@@ -115,15 +117,9 @@ static int find_and_bind_socket(const char* port_string, int family)
     return -1;
 }
 
-int socket_prepare(const char* port_string, bool use_ipv6)
+int socket_prepare(const char* port_string, bool use_ipv6, bool nonblocking_accepts)
 {
-    int socketfd = -1;
-    if (use_ipv6) {
-        socketfd = find_and_bind_socket(port_string, AF_INET6);
-    } else {
-        socketfd = find_and_bind_socket(port_string, AF_INET);
-    }
-    return socketfd;
+    return find_and_bind_socket(port_string, use_ipv6 ? AF_INET6 : AF_INET, nonblocking_accepts);
 }
 
 int socket_accept(int sockfd)

@@ -3,16 +3,20 @@
 #ifndef CONNECTION_H
 #define CONNECTION_H
 
+#include <pthread.h>
+
 #include "http.h"
 
 struct connection {
-    struct connection* next_free_conn;  // if this connection is free, pointer to the next valid unused connection
+    struct connection* next_conn;
     struct http_client client;
 };
 
 struct connection_container {
-    struct connection* first_free_conn;  // NULL if full
-    struct connection* connections;
+    pthread_mutex_t conn_lock;  // protects freelist and num, active connections should not be shared
+    int freelist_count;
+    struct connection* first_free_conn;  // NULL if no free connections
+    struct connection* connections;      // all connections, should not be directly iterated
 };
 
 /*
@@ -28,7 +32,7 @@ void connection_init(struct connection_container*, int slots);
 struct connection* connection_accept(struct connection_container*, int socket);
 
 /*
- * Shut down the given connection, marking it as vacant and adding it to the free list.
+ * Shut down the given connection struct, marking it as vacant and adding it to the free list.
  */
 void connection_close(struct connection_container*, struct connection*);
 

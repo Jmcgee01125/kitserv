@@ -10,7 +10,7 @@
 /**
  * Parameters: %s value, %d max age
  */
-static const char* COOKIE_FMT = "%s=filekit_auth; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict";
+static const char* COOKIE_FMT = "filekit_auth=%s; Path=/; Max-Age=%d; HttpOnly; SameSite=Strict";
 static char* COOKIE_NAME = "filekit_auth";
 
 static char* data_dir;

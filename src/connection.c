@@ -13,22 +13,29 @@
 
 void connection_init(struct connection_container* container, int slots)
 {
-    int i;
+    int i, rc;
 
-    container->connections = malloc(slots * sizeof(struct connection));
-    if (!container->connections) {
-        perror("connection_init");
+    if ((rc = pthread_mutex_init(&container->conn_lock, NULL))) {
+        errno = rc;
+        perror("connection_init (pthread_mutex_init)");
         abort();
     }
 
+    container->connections = malloc(slots * sizeof(struct connection));
+    if (!container->connections) {
+        perror("connection_init (malloc)");
+        abort();
+    }
+
+    container->freelist_count = slots;
     container->first_free_conn = container->connections;
     for (i = 0; i < slots - 1; i++) {
-        container->connections[i].next_free_conn = &container->connections[i + 1];
+        container->connections[i].next_conn = &container->connections[i + 1];
     }
 
     for (i = 0; i < slots; i++) {
         if (http_create_client_struct(&container->connections[i].client)) {
-            perror("connection_init");
+            perror("connection_init (http_create_client_struct)");
             abort();
         }
     }
@@ -36,52 +43,39 @@ void connection_init(struct connection_container* container, int slots)
 
 struct connection* connection_accept(struct connection_container* container, int socket)
 {
-    int acceptfd;
     struct connection* conn;
 
-    acceptfd = socket_accept(socket);
-    if (acceptfd < 0) {
-        if (errno != EWOULDBLOCK && errno != EAGAIN) {
-            perror("accept");
-        }
-        return NULL;
-    }
-
+    pthread_mutex_lock(&container->conn_lock);
     conn = container->first_free_conn;
     if (conn) {
-        container->first_free_conn = conn->next_free_conn;
-    } else {
-        fprintf(stderr, "No connection slot for new client.\n");
-        // TODO: run an algorithm to determine who of our slots we should drop
-        //       remember to log that we dropped someone, including who
-        //       also, we should not close connections unless the client sends a hangup - instead, just shutdown the
-        //       connection and wait (make them top priority for this algorithm)
-        //       would need to remove it from queue as well, but:
-        //          1) we don't have the queuefd here
-        //          2) does that break the nevents loop or client worker logic?
-        socket_close(acceptfd);
-        return NULL;
+        assert(container->freelist_count > 0);
+
+        container->first_free_conn = conn->next_conn;
+        container->freelist_count--;
+
+        conn->client.sockfd = socket;
+
+        // ensure that this connection is fresh
+        // this doesn't ensure everything is reset, but is good enough to detect blatant mistakes
+        assert(conn->client.req_headers_len == 0);
+        assert(conn->client.resp_body.len == 0);
+        assert(conn->client.ta.state == 0);
+        assert(conn->client.ta.parse_state == 0);
+        assert(conn->client.ta.resp_status == 0);
     }
-
-    conn->client.sockfd = acceptfd;
-
-    // ensure that this connection is fresh
-    // this doesn't ensure everything is reset, but is good enough to detect blatant mistakes
-    assert(conn->client.req_headers_len == 0);
-    assert(conn->client.resp_body.len == 0);
-    assert(conn->client.ta.state == 0);
-    assert(conn->client.ta.parse_state == 0);
-    assert(conn->client.ta.resp_status == 0);
+    pthread_mutex_unlock(&container->conn_lock);
 
     return conn;
 }
 
 void connection_close(struct connection_container* container, struct connection* connection)
 {
-    socket_close(connection->client.sockfd);  // ignore errors like ENOTCONN
     http_reset_client(&connection->client);
-    connection->next_free_conn = container->first_free_conn;
+    pthread_mutex_lock(&container->conn_lock);
+    connection->next_conn = container->first_free_conn;
     container->first_free_conn = connection;
+    container->freelist_count++;
+    pthread_mutex_unlock(&container->conn_lock);
 }
 
 int connection_serve(struct connection* connection)
