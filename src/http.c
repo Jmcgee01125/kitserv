@@ -546,28 +546,32 @@ int http_recv_request(struct http_client* client)
         p = r;        \
     } while (0)
 
-    /* before jumping to `past_end`, set the parse state to wherever you came from */
-past_end:
+    /* before jumping here, set the parse state to wherever you came from */
+read_more:
     readrc = read(client->sockfd, &client->req_headers[client->req_headers_len], HTTP_BUFSZ - client->req_headers_len);
     if (readrc <= 0) {
         // a few different cases to catch:
-        // 1) -1 - socket is blocking            - save parsing and return 0
-        // 2) -1 - socket is error               - indicate hangup and return -1
-        // 3) 0  - header buffer full, parsed    - prepare for a 431 error and return -1
-        // 4) 0  - header buffer full, unparsed  - parse as much as we can, hope that it fit (continue to parser)
-        // 5) 0  - socket has hit EOF            - indicate hangup and return -1
+        // 1) -1 - socket is blocking, parsed    - save parsing and return 0
+        // 2) -1 - socket is blocking, unparsed  - continue to parser
+        // 3) -1 - socket is error               - indicate hangup and return -1
+        // 4) 0  - header buffer full, parsed    - prepare for a 431 error and return -1
+        // 5) 0  - header buffer full, unparsed  - parse as much as we can, hope that it fit (continue to parser)
+        // 6) 0  - socket has hit EOF            - indicate hangup and return -1
         if (readrc != 0) {
             if (errno == EAGAIN || errno == EWOULDBLOCK) {
-                client->ta.req_parse_blk = p;
-                client->ta.req_parse_iter = r;
-                return 0;
+                if (parse_past_end(r)) {
+                    client->ta.req_parse_blk = p;
+                    client->ta.req_parse_iter = r;
+                    return 0;
+                }
+                // ignore else case here - we want to cascade to the parser below
             } else {
                 client->ta.resp_status = HTTP_X_HANGUP;
                 return -1;
             }
         } else {
             if (client->req_headers_len >= HTTP_BUFSZ) {
-                if (parse_past_end(p)) {
+                if (parse_past_end(r)) {
                     client->ta.resp_status = HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE;
                     return -1;
                 }
@@ -577,21 +581,23 @@ past_end:
                 return -1;
             }
         }
+    } else {
+        client->req_headers_len += readrc;
     }
-    client->req_headers_len += readrc;
 
     switch (client->ta.parse_state) {
         case HTTP_PS_NEW:
             p = client->req_headers;
             r = client->req_headers;
             /* fallthrough */
+
         case HTTP_PS_REQ_METHOD:
             /* 'GET ' */
             for (; !parse_past_end(r) && *r != ' '; r++)
                 ;
             if (parse_past_end(r)) {
                 client->ta.parse_state = HTTP_PS_REQ_METHOD;
-                goto past_end;
+                goto read_more;
             }
             switch (r - p) {
                 case 3:
@@ -636,7 +642,7 @@ method_not_allowed:
                 ;
             if (parse_past_end(r)) {
                 client->ta.parse_state = HTTP_PS_REQ_PATH;
-                goto past_end;
+                goto read_more;
             }
             s = NULL;
             for (q = p; q < r; q++) {
@@ -667,7 +673,7 @@ method_not_allowed:
                 ;
             if (parse_past_end(r)) {
                 client->ta.parse_state = HTTP_PS_REQ_VERSION;
-                goto past_end;
+                goto read_more;
             }
             if (r - p < 5 || !bufscmp(p, "HTTP/")) {
                 goto bad_request;
@@ -694,7 +700,7 @@ method_not_allowed:
             /* we saw \r to cap off req version, now wait for \n */
             if (parse_past_end(r)) {
                 client->ta.parse_state = HTTP_PS_REQ_VERSION_LF;
-                goto past_end;
+                goto read_more;
             }
             if (*r != '\n') {
                 goto bad_request;
@@ -709,7 +715,7 @@ parse_header:
                 ;
             if (parse_past_end(r)) {
                 client->ta.parse_state = HTTP_PS_REQ_HEAD;
-                goto past_end;
+                goto read_more;
             }
             if (r != p) {
                 /*  header:  value\r\n
@@ -750,7 +756,7 @@ parse_header:
             /* we saw \r to cap off req head, now wait for \n */
             if (parse_past_end(r)) {
                 client->ta.parse_state = HTTP_PS_REQ_HEAD_LF;
-                goto past_end;
+                goto read_more;
             }
             if (*r != '\n') {
                 goto bad_request;

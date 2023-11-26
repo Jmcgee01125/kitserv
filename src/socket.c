@@ -154,7 +154,9 @@ int socket_accept(int sockfd)
 
     // disable Nagle's algorithm, see tcp(7)
     opt = 1;
-    setsockopt(client, IPPROTO_TCP, TCP_NODELAY, (void*)&opt, sizeof(opt));
+    if (setsockopt(client, IPPROTO_TCP, TCP_NODELAY, (void*)&opt, sizeof(opt))) {
+        perror("setsockopt");
+    }
 
     rc = getnameinfo((struct sockaddr*)&peer, peersize, peer_addr, sizeof peer_addr, peer_port, sizeof peer_port,
                      NI_NUMERICHOST | NI_NUMERICSERV);
