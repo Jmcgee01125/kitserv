@@ -241,6 +241,7 @@ int http_header_add_last_modified(struct http_client*, time_t time);
 
 /**
  * Handle a static request for client using the given path and context.
+ * Pass NULL to use the default context.
  * On error, returns -1 and sets client->ta.resp_status
  */
 int http_handle_static_path(struct http_client* client, char* path, struct http_request_context* ctx);

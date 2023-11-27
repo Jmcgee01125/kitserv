@@ -816,6 +816,10 @@ int http_handle_static_path(struct http_client* client, char* path, struct http_
     struct tm tm;
     int rc;
 
+    if (!ctx) {
+        ctx = default_context;
+    }
+
     if (!(client->ta.req_method & HTTP_GET)) {
         // we only allow GET or HEAD here
         client->ta.resp_status = HTTP_405_METHOD_NOT_ALLOWED;
@@ -1000,7 +1004,7 @@ int http_serve_request(struct http_client* client)
         }
     }
     // if here, it's an internal request (either because it didn't match or there was no API tree)
-    http_handle_static_path(client, client->ta.req_path, default_context);
+    http_handle_static_path(client, client->ta.req_path, NULL);
 cont:
     client->ta.state = HTTP_STATE_PREPARE_RESPONSE;
     return 0;
