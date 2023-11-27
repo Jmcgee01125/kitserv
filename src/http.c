@@ -608,7 +608,7 @@ read_more:
                         client->ta.req_method = HTTP_PUT;
                         break;
                     }
-                    goto method_not_allowed;
+                    goto method_not_recognized;
                 case 4:
                     if (bufscmp(p, "HEAD ")) {
                         client->ta.req_method = HTTP_HEAD;
@@ -617,17 +617,19 @@ read_more:
                         client->ta.req_method = HTTP_POST;
                         break;
                     }
-                    goto method_not_allowed;
+                    goto method_not_recognized;
                 case 6:
                     if (bufscmp(p, "DELETE ")) {
                         client->ta.req_method = HTTP_DELETE;
                         break;
                     }
-                    goto method_not_allowed;
+                    goto method_not_recognized;
                 default:
-method_not_allowed:
+method_not_recognized:
+                    // we should return 405, but that would make us return the wrong methods for an API endpoint
+                    // still fits the meaning of 400: they should not repeat this req since we won't parse it correctly
+                    client->ta.resp_status = HTTP_400_BAD_REQUEST;
                     client->ta.req_method = HTTP_GET;  // default on errors
-                    client->ta.resp_status = HTTP_405_METHOD_NOT_ALLOWED;
                     return -1;
             }
             parse_advance;
