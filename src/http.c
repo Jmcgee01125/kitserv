@@ -132,7 +132,7 @@ static inline void close_fd_to_zero(int* fd)
 static inline int str_vappend(char* buf, int* offset, int max, const char* fmt, va_list* ap)
 {
     int rc = vsnprintf(&buf[*offset], max - *offset, fmt, *ap);
-    if (rc >= max - *offset) {
+    if (rc >= max - *offset || rc < 0) {
         // didn't fit
         return -1;
     }
