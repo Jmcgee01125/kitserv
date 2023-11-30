@@ -21,9 +21,7 @@ enum http_transaction_state {
     HTTP_STATE_READ = 0,
     HTTP_STATE_SERVE,
     HTTP_STATE_PREPARE_RESPONSE,
-    HTTP_STATE_SEND_START,
-    HTTP_STATE_SEND_HEAD,
-    HTTP_STATE_SEND_BODY,
+    HTTP_STATE_SEND,
     HTTP_STATE_DONE,
 };
 
@@ -105,7 +103,7 @@ struct http_transaction {
 
     /* Response fields */
     enum http_response_status resp_status;
-    int resp_start_pos;  // data not yet sent
+    int resp_start_pos;  // index of data not yet sent, >= len when done
     int resp_start_len;  // total length
     int resp_headers_pos;
     int resp_headers_len;
@@ -256,8 +254,6 @@ int http_handle_static_path(struct http_client* client, char* path, struct http_
 int http_recv_request(struct http_client* client);
 int http_serve_request(struct http_client* client);
 int http_prepare_response(struct http_client* client);
-int http_send_resp_start(struct http_client* client);
-int http_send_resp_head(struct http_client* client);
-int http_send_resp_body(struct http_client* client);
+int http_send_response(struct http_client* client);
 
 #endif

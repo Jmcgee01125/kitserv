@@ -122,24 +122,10 @@ prep_response:
                     return 0;
                 }
                 /* fallthrough */
-            case HTTP_STATE_SEND_START:
-                if (http_send_resp_start(client)) {
+            case HTTP_STATE_SEND:
+                if (http_send_response(client)) {
                     return -1;
-                } else if (*state == HTTP_STATE_SEND_START) {
-                    return 0;
-                }
-                /* fallthrough */
-            case HTTP_STATE_SEND_HEAD:
-                if (http_send_resp_head(client)) {
-                    return -1;
-                } else if (*state == HTTP_STATE_SEND_HEAD) {
-                    return 0;
-                }
-                /* fallthrough */
-            case HTTP_STATE_SEND_BODY:
-                if (http_send_resp_body(client)) {
-                    return -1;
-                } else if (*state == HTTP_STATE_SEND_BODY) {
+                } else if (*state == HTTP_STATE_SEND) {
                     return 0;
                 }
                 /* fallthrough */

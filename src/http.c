@@ -17,6 +17,7 @@
 #include <string.h>
 #include <strings.h>
 #include <sys/stat.h>
+#include <sys/uio.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -626,11 +627,13 @@ read_more:
                     goto method_not_recognized;
                 default:
 method_not_recognized:
-                    // we should return 405, but that would make us return the wrong methods for an API endpoint
-                    // still fits the meaning of 400: they should not repeat this req since we won't parse it correctly
-                    client->ta.resp_status = HTTP_400_BAD_REQUEST;
+                    /*
+                     * It appears as though we should return 405, but that would:
+                     * "indicate that the method received ... is known by the origin server"
+                     * Since we don't recognize the method, a 400 is more apt
+                     */
                     client->ta.req_method = HTTP_GET;  // default on errors
-                    return -1;
+                    goto bad_request;
             }
             parse_advance;
             /* fallthrough */
@@ -1178,7 +1181,7 @@ success:
         goto error_response;
     }
 
-    client->ta.state = HTTP_STATE_SEND_START;
+    client->ta.state = HTTP_STATE_SEND;
     return 0;
 
 error_response:
@@ -1197,54 +1200,62 @@ error_response:
     goto success;
 }
 
-/**
- * Send to the given socket fd, starting at *pos until len, incrementing *pos
- * Returns 0 on success (at least partial transfer, and ended with EAGAIN/EWOULDBLOCK)
- * Returns -1 on failure (e.g. EPIPE)
- */
-static inline int send_buf(int fd, char* buf, int* pos, int len)
+int http_send_response(struct http_client* client)
 {
-    int rc;
-    while (*pos < len) {
-        rc = write(fd, buf, len - *pos);
+    ssize_t rc;
+    struct iovec sendbufs[3];
+    int sendbufs_idx;
+    bool sent_start, sent_head, sent_body;
+
+    // TODO: have some status to know if we need to do this initial loop or we can jump directly to the sendfile bit
+
+    do {
+        // load buffers that need to be sent
+        sendbufs_idx = 0;
+        sent_start = false, sent_head = false, sent_body = false;
+        if (client->ta.resp_start_pos < client->ta.resp_start_len) {
+            sendbufs[sendbufs_idx].iov_base = &client->resp_start[client->ta.resp_start_pos];
+            sendbufs[sendbufs_idx].iov_len = client->ta.resp_start_len - client->ta.resp_start_pos;
+            sendbufs_idx++;
+            sent_start = true;
+        }
+        if (client->ta.resp_headers_pos < client->ta.resp_headers_len) {
+            sendbufs[sendbufs_idx].iov_base = &client->resp_headers[client->ta.resp_headers_pos];
+            sendbufs[sendbufs_idx].iov_len = client->ta.resp_headers_len - client->ta.resp_headers_pos;
+            sendbufs_idx++;
+            sent_head = true;
+        }
+        if (client->ta.resp_fd <= 0 && client->ta.req_method != HTTP_HEAD &&
+            client->ta.resp_body_pos <= client->ta.resp_body_end) {
+            sendbufs[sendbufs_idx].iov_base = &client->resp_body.buf[client->ta.resp_body_pos];
+            sendbufs[sendbufs_idx].iov_len = client->resp_body.len - client->ta.resp_body_pos;
+            sendbufs_idx++;
+            sent_body = true;
+        }
+
+        // send the buffers that got filled in
+        rc = writev(client->sockfd, sendbufs, sendbufs_idx);
         if (rc < 0) {
             return errno == EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
         }
-        *pos += rc;
-    }
-    return 0;
-}
 
-int http_send_resp_start(struct http_client* client)
-{
-    if (send_buf(client->sockfd, client->resp_start, &client->ta.resp_start_pos, client->ta.resp_start_len)) {
-        return -1;
-    }
-    if (client->ta.resp_start_pos == client->ta.resp_start_len) {
-        client->ta.state = HTTP_STATE_SEND_HEAD;
-    }
-    return 0;
-}
+        // increment our send variables - take bytes out of rc, up to the space that's unsent
+        if (sent_start) {
+            client->ta.resp_start_pos += rc;
+            // set rc to the number of bytes not consumed here, or negative if we couldn't finish this segment
+            rc = client->ta.resp_start_pos - client->ta.resp_start_len;
+        }
+        if (sent_head && rc > 0) {
+            client->ta.resp_headers_pos += rc;
+            rc = client->ta.resp_headers_pos - client->ta.resp_headers_len;
+        }
+        if (sent_body && rc > 0) {
+            client->ta.resp_body_pos += rc;
+            rc = client->ta.resp_body_pos - client->resp_body.len;
+        }
+        assert(rc <= 0);  // should have either consumed all bytes or have more to send
 
-int http_send_resp_head(struct http_client* client)
-{
-    if (send_buf(client->sockfd, client->resp_headers, &client->ta.resp_headers_pos, client->ta.resp_headers_len)) {
-        return -1;
-    }
-    if (client->ta.resp_headers_pos == client->ta.resp_headers_len) {
-        client->ta.state = HTTP_STATE_SEND_BODY;
-    }
-    return 0;
-}
-
-int http_send_resp_body(struct http_client* client)
-{
-    ssize_t rc;
-
-    if (client->ta.req_method == HTTP_HEAD) {
-        // we don't need to send anything
-        goto done;
-    }
+    } while (rc < 0);  // while rc is below 0, we didn't send everything we wanted to
 
     // have a file to send
     if (client->ta.resp_fd > 0) {
@@ -1255,31 +1266,17 @@ int http_send_resp_body(struct http_client* client)
         } while (rc > 0);
 #else
         // TODO: send the file here using `send(2)`
-        //       cycle it within the client->resp_body.buf area (use .max)
         fprintf(stderr, "Cannot send file.\n");
         client->ta.resp_body_pos = client->ta.resp_body_end + 1;
 #endif
         if (client->ta.resp_body_pos > client->ta.resp_body_end) {
             // finished sending the file - pos should be one greater than end here
             close_fd_to_zero(&client->ta.resp_fd);
-        }
-        if (rc < 0) {
+        } else if (rc < 0) {
             return errno == EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
         }
     }
 
-    // data to send is in the body buffer
-    else {
-        while (client->ta.resp_body_pos < client->resp_body.len) {
-            rc = write(client->sockfd, client->resp_body.buf, client->resp_body.len - client->ta.resp_body_pos);
-            if (rc < 0) {
-                return errno == EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
-            }
-            client->ta.resp_body_pos += rc;
-        }
-    }
-
-done:
     client->ta.state = HTTP_STATE_DONE;
     if (status_is_error(client->ta.resp_status) || client->ta.req_version == HTTP_1_0) {
         return -1;

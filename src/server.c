@@ -14,6 +14,8 @@
 #include "queue.h"
 #include "socket.h"
 
+#define MAX_EVENTS (64)
+
 static int slots;
 static pthread_barrier_t startup_barrier;
 
@@ -51,7 +53,7 @@ static void* client_worker(void* data)
 {
     struct worker* self = (struct worker*)data;
     struct connection* conn;
-    queue_event events[64];
+    queue_event events[MAX_EVENTS];
     int nevents, i;
 
     connection_init(&self->conn_container, slots);
@@ -64,7 +66,7 @@ static void* client_worker(void* data)
     pthread_barrier_wait(&startup_barrier);
 
     while (1) {
-        nevents = queue_wait(self->queuefd, events, 16);
+        nevents = queue_wait(self->queuefd, events, MAX_EVENTS);
         if (nevents < 0) {
             perror("queue_wait");
             continue;
