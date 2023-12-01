@@ -53,7 +53,7 @@ int http_create_client_struct(struct http_client* client)
     if (!(client->req_headers = malloc(HTTP_BUFSZ * 2))) {
         goto err_reqheaders;
     }
-    if (!(client->resp_start = malloc(HTTP_BUFSZ))) {
+    if (!(client->resp_start = malloc(HTTP_BUFSZ_SMALL))) {
         goto err_respstart;
     }
     if (!(client->resp_headers = malloc(HTTP_BUFSZ))) {
@@ -1075,11 +1075,11 @@ static const char* get_status_string(enum http_response_status status)
 
 static inline void prepare_resp_start(struct http_client* client)
 {
-    // should always fit, unless some idiot changed HTTP_BUFSZ to be really small
+    // should always fit, unless some idiot changed the buffer size to be too small
     client->ta.resp_start_len = 0;
-    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ, "%s",
+    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ_SMALL, "%s",
                get_version_string(client->ta.req_version));
-    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ, "%s",
+    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ_SMALL, "%s",
                get_status_string(client->ta.resp_status));
 }
 
@@ -1208,7 +1208,6 @@ int http_send_response(struct http_client* client)
     bool sent_start, sent_head, sent_body;
 
     // TODO: have some status to know if we need to do this initial loop or we can jump directly to the sendfile bit
-
     do {
         // load buffers that need to be sent
         sendbufs_idx = 0;
@@ -1258,7 +1257,7 @@ int http_send_response(struct http_client* client)
     } while (rc < 0);  // while rc is below 0, we didn't send everything we wanted to
 
     // have a file to send
-    if (client->ta.resp_fd > 0) {
+    if (client->ta.resp_fd > 0 && client->ta.req_method != HTTP_HEAD) {
 #ifdef __linux__
         do {
             rc = sendfile(client->sockfd, client->ta.resp_fd, &client->ta.resp_body_pos,

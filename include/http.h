@@ -9,6 +9,7 @@
 #include "buffer.h"
 
 #define HTTP_BUFSZ (4096)
+#define HTTP_BUFSZ_SMALL (256)
 
 struct http_transaction;
 struct http_client;
@@ -141,7 +142,7 @@ struct http_client {
     char* req_headers;  // persistent request header information
     char* req_payload;  // cycling receive buffer
 
-    char* resp_start;    // response start buffer (HTTP_BUFSZ)
+    char* resp_start;    // response start buffer (HTTP_BUFSZ_SMALL)
     char* resp_headers;  // response headers buffer (HTTP_BUFZ)
     buffer_t resp_body;  // response body buffer (at least HTTP_BUFZ, may grow)
 
