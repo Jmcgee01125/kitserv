@@ -884,30 +884,34 @@ path_set:
         client->ta.resp_fd = rc;
     }
 
+    // resp_body_pos already set - 0
+    client->ta.resp_body_end = st.st_size - 1;
+
     if (client->ta.range_requested) {
-        // we have a range request, parse it and set the header, erroring if necessary
-        if (parse_range(client, st.st_size) ||
-            http_header_add_content_range(client, client->ta.resp_body_pos, client->ta.resp_body_end, st.st_size)) {
-            close_fd_to_zero(&client->ta.resp_fd);
-            return -1;
+        // we have a range request, parse it and set the header
+        if (!parse_range(client, st.st_size)) {
+            if (http_header_add_content_range(client, client->ta.resp_body_pos, client->ta.resp_body_end, st.st_size)) {
+                goto err_closefd;
+            }
+        } else {
+            // range parsing failed, we ignore the header on bad req but return other errors as-is
+            if (client->ta.resp_status != HTTP_400_BAD_REQUEST) {
+                goto err_closefd;
+            }
+            client->ta.range_requested = false;
         }
-    } else {
-        // resp_body_pos already set - 0
-        client->ta.resp_body_end = st.st_size - 1;
     }
 
     // add content type, accept-ranges, and last modified headers
     if (http_header_add_content_type_guess(client, strrchr(fname, '.')) ||
         http_header_add(client, "accept-ranges", "bytes") || http_header_add_last_modified(client, st.st_mtim.tv_sec)) {
-        close_fd_to_zero(&client->ta.resp_fd);
-        return -1;
+        goto err_closefd;
     }
 
     if (client->ta.req_modified_since) {
         if (!strptime(client->ta.req_modified_since, "%a, %d %b %Y %T GMT", &tm)) {
             client->ta.resp_status = HTTP_400_BAD_REQUEST;
-            close_fd_to_zero(&client->ta.resp_fd);
-            return -1;
+            goto err_closefd;
         }
         if (difftime(st.st_mtim.tv_sec, timegm(&tm)) <= 0) {
             client->ta.resp_status = HTTP_304_NOT_MODIFIED;
@@ -923,7 +927,12 @@ path_set:
         client->ta.resp_status = HTTP_200_OK;
     }
 
+    // leave fd open so it can be returned later
     return 0;
+
+err_closefd:
+    close_fd_to_zero(&client->ta.resp_fd);
+    return -1;
 }
 
 /**
@@ -1208,6 +1217,7 @@ int http_send_response(struct http_client* client)
     bool sent_start, sent_head, sent_body;
 
     // TODO: have some status to know if we need to do this initial loop or we can jump directly to the sendfile bit
+
     do {
         // load buffers that need to be sent
         sendbufs_idx = 0;
