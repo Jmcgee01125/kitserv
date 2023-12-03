@@ -172,7 +172,7 @@ int socket_accept(int sockfd)
 int socket_close(int sockfd)
 {
     int save_errno;
-    if (shutdown(sockfd, SHUT_WR)) {
+    if (shutdown(sockfd, SHUT_RDWR)) {
         save_errno = errno;
         close(sockfd);  // shutdown failed, but we should still try to close if we can (but we don't care if it errors)
         errno = save_errno;

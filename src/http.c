@@ -189,6 +189,11 @@ static int parse_header_cookie(struct http_client* client, char* value)
     char* r;  // =, then value
     char* q;  // ; or NULL if end
 
+    /*  name=value;
+     *  ^    ^    ^
+     *  p    r    q
+     */
+
     while (1) {
         // consume whitespace
         for (; *p == ' ' || *p == '\t'; p++)
@@ -280,9 +285,9 @@ static const struct header headers[] = {
 };
 
 /**
- * Parse the range request of a client, setting the resp_body_pos and resp_body_end fields appropriately.
+ * Parse the range request of a client, setting resp_body_pos and resp_body_end fields appropriately (only on success).
  * Assumes `client->ta.range_requested` is true, and `client->ta.req_range` is set.
- * Returns -1 if the range is malformed (or multipart), setting `client->ta.resp_status`. Fields may be modified.
+ * Returns -1 if the range is malformed (or multipart), setting `client->ta.resp_status` (resp_body_* unchanged).
  */
 static int parse_range(struct http_client* client, off_t filesize)
 {
@@ -290,7 +295,8 @@ static int parse_range(struct http_client* client, off_t filesize)
     char* q = NULL;
     char* r;
     char* hyphen = NULL;
-    off_t conv;
+    off_t from = 0;
+    off_t to = 0;
 
     assert(client->ta.range_requested);
     assert(client->ta.req_range != NULL);
@@ -310,7 +316,7 @@ static int parse_range(struct http_client* client, off_t filesize)
                 hyphen = r;
             } else if (*r == ',') {
                 // multipart - we don't support
-                goto not_satisfiable;
+                goto bad_request;  // could do not satisfiable, but we discard bad req ranges so this is better
             } else {
                 goto bad_request;
             }
@@ -331,39 +337,44 @@ static int parse_range(struct http_client* client, off_t filesize)
     if (p) {
         *hyphen = '\0';  // cap off p
         // bytes=XXX- or bytes=XXX-YYY
-        if (strtonum(p, &conv)) {
+        if (strtonum(p, &from)) {
             goto bad_request;
         }
-        if (conv > filesize) {
+        if (from > filesize) {
             goto not_satisfiable;
         }
-        client->ta.resp_body_pos = conv;
         if (q) {
             // bytes=XXX-YYY
-            if (strtonum(q, &conv)) {
+            if (strtonum(q, &to)) {
                 goto bad_request;
             }
-            client->ta.resp_body_end = conv > filesize - 1 ? filesize - 1 : conv;
+            to = to > filesize - 1 ? filesize - 1 : to;
+            if (to < from) {
+                goto bad_request;
+            }
         } else {
             // bytes=XXX-
-            client->ta.resp_body_end = filesize - 1;
+            to = filesize - 1;
         }
     } else if (q) {
         // bytes=-YYY
-        if (strtonum(q, &conv)) {
+        if (strtonum(q, &from)) {
             goto bad_request;
         }
-        if (conv > filesize) {
+        if (from > filesize) {
             goto not_satisfiable;
         }
-        client->ta.resp_body_pos = 0;
-        client->ta.resp_body_end = filesize - conv;
+        from = filesize - from;  // -YYY means "YYY bytes from end" so invert it
+        to = filesize = filesize - 1;
     } else {
         // mm yes `bytes=-`, very good
         goto bad_request;
     }
 
+    client->ta.resp_body_pos = from;
+    client->ta.resp_body_end = to;
     return 0;
+
 bad_request:
     client->ta.resp_status = HTTP_400_BAD_REQUEST;
     return -1;
@@ -891,11 +902,17 @@ path_set:
         // we have a range request, parse it and set the header
         if (!parse_range(client, st.st_size)) {
             if (http_header_add_content_range(client, client->ta.resp_body_pos, client->ta.resp_body_end, st.st_size)) {
+                client->ta.resp_status = HTTP_500_INTERNAL_ERROR;
                 goto err_closefd;
             }
         } else {
             // range parsing failed, we ignore the header on bad req but return other errors as-is
             if (client->ta.resp_status != HTTP_400_BAD_REQUEST) {
+                if (client->ta.resp_status == HTTP_416_RANGE_NOT_SATISFIABLE) {
+                    http_header_add(client, "content-range", "*/%ld", st.st_size);
+                    client->ta.preserve_headers_on_error = true;
+                    goto err_closefd;
+                }
                 goto err_closefd;
             }
             client->ta.range_requested = false;
@@ -905,6 +922,7 @@ path_set:
     // add content type, accept-ranges, and last modified headers
     if (http_header_add_content_type_guess(client, strrchr(fname, '.')) ||
         http_header_add(client, "accept-ranges", "bytes") || http_header_add_last_modified(client, st.st_mtim.tv_sec)) {
+        client->ta.resp_status = HTTP_500_INTERNAL_ERROR;
         goto err_closefd;
     }
 
@@ -1093,19 +1111,31 @@ static inline void prepare_resp_start(struct http_client* client)
 }
 
 /**
- * Make an error response on a given client
- * If this fails, you're having a very bad time
+ * Wipe and add headers for a response on a given client
  */
-static int prepare_fresh_error_response(struct http_client* client)
+static int prepare_error_response_headers(struct http_client* client)
 {
-    int rc;
-
     client->ta.resp_headers_len = 0;
+
+    if (client->ta.resp_status == HTTP_405_METHOD_NOT_ALLOWED && http_header_add_allow(client)) {
+        return -1;
+    }
+
+    return 0;
+}
+
+/**
+ * Wipe and add body content for a response on a given client
+ */
+static int prepare_error_response_body(struct http_client* client)
+{
+    client->ta.resp_body_pos = 0;
+    client->ta.resp_body_end = 0;
     client->resp_body.len = 0;
     close_fd_to_zero(&client->ta.resp_fd);
 
-    if ((rc = http_header_add_content_type(client, "text/plain"))) {
-        return rc;
+    if (http_header_add_content_type(client, "text/plain")) {
+        return -1;
     }
 
     switch (client->ta.resp_status) {
@@ -1119,9 +1149,6 @@ static int prepare_fresh_error_response(struct http_client* client)
             }
             return buffer_append(&client->resp_body, client->ta.req_path, strlen(client->ta.req_path));
         case HTTP_405_METHOD_NOT_ALLOWED:
-            if ((rc = http_header_add_allow(client))) {
-                return rc;
-            }
             return buffer_append(&client->resp_body, "Method not allowed.", sizeof("Method not allowed.") - 1);
         case HTTP_408_REQUEST_TIMEOUT:
             return buffer_append(&client->resp_body, "Request timeout.", sizeof("Request timeout.") - 1);
@@ -1147,6 +1174,7 @@ static int prepare_fresh_error_response(struct http_client* client)
         default:
             return buffer_append(&client->resp_body, "Internal server error.", sizeof("Internal server error.") - 1);
     }
+
     return 0;
 }
 
@@ -1199,11 +1227,11 @@ error_response:
         fprintf(stderr, "Unsalvageable handling during error number %d.\n", client->ta.resp_status);
         return -1;
     }
-    if (!client->ta.api_endpoint_hit || client->ta.resp_fd < 0) {
-        // our error or the client wants to use the default error response
-        if (prepare_fresh_error_response(client)) {
-            return -1;
-        }
+    if (!client->ta.preserve_headers_on_error && prepare_error_response_headers(client)) {
+        return -1;
+    }
+    if (!client->ta.preserve_body_on_error && prepare_error_response_body(client)) {
+        return -1;
     }
     already_errored = true;
     goto success;

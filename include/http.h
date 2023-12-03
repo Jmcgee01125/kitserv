@@ -126,6 +126,15 @@ struct http_transaction {
     off_t resp_body_end;  // final offset when sending fd, end of range or content length
     bool range_requested;
 
+    /**
+     * Preserve the headers or body (resp_body or resp_fd) for sending the result. Normally, both are wiped.
+     * Note that some headers are added when the body is discarded, and should not be set by preserved headers:
+     *      Always: content-type
+     *      (And, for all responses, content-length and server)
+     */
+    bool preserve_headers_on_error;
+    bool preserve_body_on_error;
+
     api_handler_t api_endpoint_hit;  // for re-calling API functions without re-parsing tree, and tracking if run at all
     void* api_internal_data;         // data pointer for API requests - NULL on first call
     int api_allow_flags;             // http_method bits, used in case parsing matched an endpoint but not method(s)
