@@ -115,22 +115,21 @@ struct http_transaction {
      *
      * sending:
      *      if client.ta.resp_fd is nonzero, send from client.ta.resp_body_pos to client.ta.resp_body_end in file
-     *      otherwise, send the contents of client.resp_body starting at client.ta.resp_body_pos
+     *      otherwise, send the contents of client.resp_body.buf starting at client.ta.resp_body_pos (usually 0/start)
      *
      * this setup is designed to facilitate sending either a file or buffer with the most convenient system,
      * but allow HEAD requests to set size with the file size system and send nothing using the client.resp_body system
      * (by setting resp_fd to 0, leaving resp_body empty, and setting pos / end as if a file were being sent)
      */
     int resp_fd;
-    off_t resp_body_pos;  // send progress, initial value of range start, should always be set
+    off_t resp_body_pos;  // send progress, initial value of range start, always used
     off_t resp_body_end;  // final offset when sending fd, end of range or content length
     bool range_requested;
-
     /**
      * Preserve the headers or body (resp_body or resp_fd) for sending the result. Normally, both are wiped.
      * Note that some headers are added when the body is discarded, and should not be set by preserved headers:
      *      Always: content-type
-     *      (And, for all responses, content-length and server)
+     *      (And, as with all responses, content-length and server)
      */
     bool preserve_headers_on_error;
     bool preserve_body_on_error;
@@ -170,7 +169,7 @@ struct http_api_entry {
     char* prefix;  // prefix of the api endpoint, e.g. "login"
     int prefix_length;
     enum http_method method;  // GET implies HEAD, no need to set HEAD here
-    bool finishes_path;       // if true, do not allow any extra path components after this one (ignore if it does
+    bool finishes_path;       // if true, do not allow any extra path components after this one (ignore if it does)
     /**
      * Function to receive the client so that the api endpoint code can do processing.
      * The client's `req_*` fields will be set before calling, but the payload may only be partially read.
@@ -182,9 +181,8 @@ struct http_api_entry {
      * Set `client->ta.resp_status` before returning to indicate the result of processing.
      * If `client->ta.resp_status` is not set, will assume that payload reads hit EAGAIN. APIs may make use of
      *      `client->ta.api_internal_data` to remember information when called again (more data available).
-     * If `client->ta.resp_status` indicates an error, either of the following will occur:
-     *      If the `client->ta.resp_fd` is negative, all headers will be wiped and a generic error will be sent.
-     *      Otherwise, only the response status matters (the message will be sent as normal).
+     * If `client->ta.resp_status` indicates an error, all response data will be reset and a generic error will be sent.
+     *      To disable this, set the `client.ta.presserve_*_on_error` fields. See those field's comments.
      */
     api_handler_t handler;
 };
@@ -250,7 +248,7 @@ int http_header_add_last_modified(struct http_client*, time_t time);
 /**
  * Handle a static request for client using the given path and context.
  * Pass NULL to use the default context.
- * On error, returns -1 and sets client->ta.resp_status
+ * On error, returns -1 and sets client->ta.resp_status.
  */
 int http_handle_static_path(struct http_client* client, char* path, struct http_request_context* ctx);
 
@@ -258,8 +256,8 @@ int http_handle_static_path(struct http_client* client, char* path, struct http_
  * The following functions process a request.
  *
  * Returns -1 on error, or 0 if data was successfully read (even if partially).
- * On success, check client->ta.state for if state has advanced or it was blocked.
- * On error, skip to http_prepare_response and continue (ignore state) or, if past, close the connection.
+ * On success, check client->ta.state to see if the state has advanced or the socket blocked.
+ * On error, skip to http_prepare_response and continue (ignore state) or, if passed, close the connection.
  */
 int http_recv_request(struct http_client* client);
 int http_serve_request(struct http_client* client);

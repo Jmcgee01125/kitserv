@@ -19,31 +19,31 @@ typedef enum {
 
 /**
  * Initialize a queue and return the created file descriptor.
- * Returns -1 on error.
+ * Returns fd on success, -1 on error.
  */
 int queue_init(void);
 
 /**
  * Wait for up to n events on the given queue. Returns the number of actual events, written to out_events.
- * Returns -1 on error.
+ * Returns nevents on success, -1 on error.
  */
 ssize_t queue_wait(int qfd, queue_event* out_events, int n);
 
 /**
  * Add a new file descriptor and associated data to the queue with the given condition.
- * Returns -1 on error.
+ * Returns 0 on success, -1 on error.
  */
 int queue_add(int qfd, int fd, void* data, queue_wait_cond, int shared);
 
 /**
  * Re-arm a given file descriptor with the target queue type.
- * Returns -1 on error.
+ * Returns 0 on success, -1 on error.
  */
 int queue_rearm(int qfd, int fd, void* data, queue_wait_cond, int shared);
 
 /**
  * Remove a given file descriptor from the given queue.
- * Returns -1 on error.
+ * Returns 0 on success, -1 on error.
  */
 int queue_remove(int qfd, int fd);
 

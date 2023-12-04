@@ -18,7 +18,8 @@ int socket_prepare(const char* port_string, bool use_ipv6, bool nonblocking_acce
 int socket_accept(int sockfd);
 
 /**
- * Gracefully shuts down the given socket. Returns 0 on success, -1 on error.
+ * Gracefully shuts down the given socket.
+ * Returns 0 on success, -1 on error.
  */
 int socket_close(int sockfd);
 

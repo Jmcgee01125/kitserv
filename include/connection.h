@@ -13,7 +13,7 @@ struct connection {
 };
 
 struct connection_container {
-    pthread_mutex_t conn_lock;  // protects freelist and num, active connections should not be shared
+    pthread_mutex_t conn_lock;  // protects freelist and count, active connections should not be shared
     int freelist_count;
     struct connection* first_free_conn;  // NULL if no free connections
     struct connection* connections;      // all connections, should not be directly iterated
@@ -26,8 +26,8 @@ struct connection_container {
 void connection_init(struct connection_container*, int slots);
 
 /*
- * Accept a connection on the given socket.
- * Returns the connection to be served, or NULL on error.
+ * Allocate a connection struct using the given socket.
+ * Returns the connection to be served, or NULL on error (i.e. no slots).
  */
 struct connection* connection_accept(struct connection_container*, int socket);
 
