@@ -5,7 +5,7 @@ Kitserv is a simple, single-instance file server with extensible API interface.
 The goal of Kitserv is to provide a simple, easily-deployable stateless file
 server that can be linked into a program to quickly host a web server, without
 sacrificing performance for ease of use. Kitserv can also be used to host any
-directory asa web server, without needing to point a full-fledged server at it.
+directory as a web server, without needing to point a full-fledged server at it.
 
 Kitserv does not provide TLS. Use a reverse proxy or tunnel for TLS support.
 
