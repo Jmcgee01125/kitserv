@@ -101,11 +101,18 @@ int kitserv_api_read_payload(struct kitserv_client* client, char* buf, int nbyte
     // DO NOT overread here!
     while (nbytes > 0) {
         rc = read(client->sockfd, &buf[written], nbytes);
-        if (rc <= 0) {
-            if (errno < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+        if (rc < 0) {
+            if (errno == EAGAIN || errno == EWOULDBLOCK) {
                 return written > 0 ? written : -1;
             }
             client->ta.resp_status = HTTP_X_HANGUP;
+            return -1;
+        } else if (rc == 0) {
+            // client has closed their end of the connection,
+            // but if we read something we should pass it along
+            if (written > 0) {
+                return written;
+            }
             return -1;
         }
         written += rc;
