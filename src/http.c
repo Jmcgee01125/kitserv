@@ -1,4 +1,4 @@
-/* Part of FileKit, licensed under the GNU Affero GPL. */
+/* Part of Kitserv, licensed under the GNU Affero GPL. */
 
 #define _POSIX_C_SOURCE 200809L
 #define _XOPEN_SOURCE 700
@@ -26,73 +26,81 @@
 #endif
 
 #include "buffer.h"
+#include "kitserv.h"
+
+#define SERVER_NAME ("kitserv")
 
 #define bufscmp(s, target) (!memcmp(s, target, sizeof(target) - 1))
 
-static char* server_name;
-static struct http_request_context* default_context;
-static char* target_cookie_name;
-static struct http_api_tree* api_tree;
+static struct kitserv_request_context* default_context;
+static struct kitserv_api_tree* api_tree;
 
-void http_init(char* servername, struct http_request_context* http_default_context, char* auth_cookie_name,
-               struct http_api_tree* http_api_list)
+void kitserv_http_init(struct kitserv_request_context* http_default_context, struct kitserv_api_tree* http_api_list)
 {
-    assert(servername);
-    assert(http_default_context);
-    assert(http_default_context->root);
+    if (!http_default_context) {
+        fprintf(stderr, "No web context provided.\n");
+        abort();
+    }
+    if (!http_default_context->root) {
+        fprintf(stderr, "No root directory in default context.\n");
+        abort();
+    }
 
-    server_name = servername;
     default_context = http_default_context;
-    target_cookie_name = auth_cookie_name;
     api_tree = http_api_list;
 }
 
-int http_create_client_struct(struct http_client* client)
+int kitserv_http_create_client_struct(struct kitserv_client* client)
 {
     assert(client != NULL);
-    if (!(client->req_headers = malloc(HTTP_BUFSZ * 2))) {
+    if (!(client->req_headers = malloc(HTTP_BUFSZ))) {
         goto err_reqheaders;
-    }
-    if (!(client->resp_start = malloc(HTTP_BUFSZ_SMALL))) {
-        goto err_respstart;
     }
     if (!(client->resp_headers = malloc(HTTP_BUFSZ))) {
         goto err_respheaders;
     }
-    if (buffer_init(&client->resp_body, HTTP_BUFSZ)) {
+    if (!(client->resp_start = malloc(HTTP_BUFSZ_SMALL))) {
+        goto err_respstart;
+    }
+    if (!(client->req_cookies = malloc(sizeof(struct http_cookie) * HTTP_MAX_COOKIES))) {
+        goto err_cookies;
+    }
+    if (kitserv_buffer_init(&client->resp_body, HTTP_BUFSZ)) {
         goto err_respbody;
     }
-    http_reset_client(client);
+    kitserv_http_reset_client(client);
     return 0;
 
 err_respbody:
-    free(client->resp_headers);
-err_respheaders:
+    free(client->req_cookies);
+err_cookies:
     free(client->resp_start);
 err_respstart:
+    free(client->resp_headers);
+err_respheaders:
     free(client->req_headers);
 err_reqheaders:
     return -1;
 }
 
-static inline void cleanup_client(struct http_client* client)
+static inline void cleanup_client(struct kitserv_client* client)
 {
     memset(&client->ta, 0, sizeof(struct http_transaction));
-    buffer_reset(&client->resp_body, HTTP_BUFSZ);
+    kitserv_buffer_reset(&client->resp_body, HTTP_BUFSZ);
 }
 
-void http_finalize_transaction(struct http_client* client)
+void kitserv_http_finalize_transaction(struct kitserv_client* client)
 {
     // in case the client sent part of their next request into the buffers for this one
     // so, what we considered the payload length is actually now the header length
     const int remaining_payload = client->ta.req_payload_len - client->ta.req_payload_pos;
     assert(remaining_payload >= 0 && remaining_payload <= HTTP_BUFSZ);
-    memmove(client->req_headers, &client->req_payload[client->ta.req_payload_pos], remaining_payload);
+    memmove(client->req_headers, &client->ta.req_payload[client->ta.req_payload_pos], remaining_payload);
     client->req_headers_len = remaining_payload;
     cleanup_client(client);
 }
 
-void http_reset_client(struct http_client* client)
+void kitserv_http_reset_client(struct kitserv_client* client)
 {
     client->req_headers_len = 0;
     cleanup_client(client);
@@ -130,7 +138,7 @@ static inline void close_fd_to_zero(int* fd)
  * Returns 0 on success, -1 on failure.
  * *offset is not incremented on failure, but buf[offset..max] is undefined.
  */
-static inline int str_vappend(char* buf, int* offset, int max, const char* fmt, va_list* ap)
+static inline int str_appendva(char* buf, int* offset, int max, const char* fmt, va_list* ap)
 {
     int rc = vsnprintf(&buf[*offset], max - *offset, fmt, *ap);
     if (rc >= max - *offset || rc < 0) {
@@ -151,7 +159,7 @@ static int str_append(char* buf, int* offset, int max, char* fmt, ...)
     va_list ap;
     int rc;
     va_start(ap, fmt);
-    rc = str_vappend(buf, offset, max, fmt, &ap);
+    rc = str_appendva(buf, offset, max, fmt, &ap);
     va_end(ap);
     return rc;
 }
@@ -176,18 +184,19 @@ static bool attempted_path_traversal(char* path)
     return false;
 }
 
-static inline bool status_is_error(enum http_response_status status)
+static inline bool status_is_error(enum kitserv_http_response_status status)
 {
     return status >= 400;
 }
 
-static int parse_header_cookie(struct http_client* client, char* value)
+static int parse_header_cookie(struct kitserv_client* client, char* value)
 {
     // Cookie: NAME=VALUE; NAME=VALUE
 
     char* p = value;
     char* r;  // =, then value
     char* q;  // ; or NULL if end
+    int cookie_index = client->ta.req_num_cookies;
 
     /*  name=value;
      *  ^    ^    ^
@@ -199,10 +208,12 @@ static int parse_header_cookie(struct http_client* client, char* value)
         for (; *p == ' ' || *p == '\t'; p++)
             ;
 
+        // TODO: there are possible illegal characters in cookie names and values, which we don't filter
+
         r = strchr(p, '=');
         if (!r) {
-            client->ta.resp_status = HTTP_400_BAD_REQUEST;
-            return -1;
+            // saw something weird, discard this header without saving cookies
+            return 0;
         }
         q = strchr(r, ';');
         if (q) {
@@ -211,10 +222,16 @@ static int parse_header_cookie(struct http_client* client, char* value)
         *r = '\0';
         r++;
 
-        // if value exists, parse wanted cookies
+        // cookie has an actual value
         if (r != q) {
-            if (target_cookie_name && !strcmp(p, target_cookie_name)) {
-                client->ta.req_cookie = r;
+            if (cookie_index < HTTP_MAX_COOKIES) {
+                client->req_cookies[cookie_index].key = p;
+                client->req_cookies[cookie_index].value = r;
+                client->req_cookies[cookie_index].keylen = r - p - 1;
+                cookie_index++;
+            } else {
+                // discard extra cookies - we're stuffed!
+                goto finished;
             }
         }
 
@@ -225,24 +242,27 @@ static int parse_header_cookie(struct http_client* client, char* value)
         p = q + 1;
     }
 
+finished:
+    // commit all of our spotted cookies
+    client->ta.req_num_cookies = cookie_index + 1;
     return 0;
 }
 
-static int parse_header_range(struct http_client* client, char* value)
+static int parse_header_range(struct kitserv_client* client, char* value)
 {
     client->ta.range_requested = true;
     client->ta.req_range = value;
     return 0;
 }
 
-static int parse_header_if_modified_since(struct http_client* client, char* value)
+static int parse_header_if_modified_since(struct kitserv_client* client, char* value)
 {
     // If-Modified-Since: DAYNAME, DAY MONTH YEAR HH:MM:SS GMT
     client->ta.req_modified_since = value;
     return 0;
 }
 
-static int parse_header_content_length(struct http_client* client, char* value)
+static int parse_header_content_length(struct kitserv_client* client, char* value)
 {
     // Content-Length: LENGTH
     if (strtonum(value, &client->ta.req_content_len) || client->ta.req_content_len < 0) {
@@ -254,14 +274,14 @@ bad_request:
     return -1;
 }
 
-static int parse_header_content_type(struct http_client* client, char* value)
+static int parse_header_content_type(struct kitserv_client* client, char* value)
 {
     // Content-Type: MIME/TYPE
     client->ta.req_mimetype = value;
     return 0;
 }
 
-static int parse_header_content_disposition(struct http_client* client, char* value)
+static int parse_header_content_disposition(struct kitserv_client* client, char* value)
 {
     // Content-Disposition: attachment; filename=FILENAME
     client->ta.req_disposition = value;
@@ -271,7 +291,8 @@ static int parse_header_content_disposition(struct http_client* client, char* va
 struct header {
     char* name;
     int len;
-    int (*func)(struct http_client* client, char* value); /* returns 0 on successs, -1 on error, setting resp_status */
+    int (*func)(struct kitserv_client* client,
+                char* value); /* returns 0 on successs, -1 on error, setting resp_status */
 };
 
 #define HEADERS_NUM (6)
@@ -284,25 +305,21 @@ static const struct header headers[] = {
     {.name = "content-disposition", .len = 19, .func = parse_header_content_disposition},
 };
 
-/**
- * Parse the range request of a client, setting resp_body_pos and resp_body_end fields appropriately (only on success).
- * Assumes `client->ta.range_requested` is true, and `client->ta.req_range` is set.
- * Returns -1 if the range is malformed (or multipart), setting `client->ta.resp_status` (resp_body_* unchanged).
- */
-static int parse_range(struct http_client* client, off_t filesize)
+int kitserv_http_parse_range(struct kitserv_client* client, off_t* out_from, off_t* out_to)
 {
     char* p = client->ta.req_range;
     char* q = NULL;
     char* r;
     char* hyphen = NULL;
-    off_t from = 0;
-    off_t to = 0;
+    off_t from = -1;
+    off_t to = -1;
 
-    assert(client->ta.range_requested);
-    assert(client->ta.req_range != NULL);
+    if (!client->ta.range_requested) {
+        return -1;
+    }
 
     if (strncmp(p, "bytes=", 6)) {
-        goto bad_request;
+        return -1;
     }
     p += 6;
 
@@ -311,19 +328,17 @@ static int parse_range(struct http_client* client, off_t filesize)
         if (*r < '0' || *r > '9') {
             if (*r == '-') {
                 if (hyphen) {
-                    goto bad_request;  // two hyphens
+                    return -1;  // two hyphens
                 }
                 hyphen = r;
-            } else if (*r == ',') {
-                // multipart - we don't support
-                goto bad_request;  // could do not satisfiable, but we discard bad req ranges so this is better
             } else {
-                goto bad_request;
+                // a comma means multipart - we don't support that, so throw it in with the rest
+                return -1;
             }
         }
     }
     if (!hyphen) {
-        goto bad_request;
+        return -1;
     }
     if (p == hyphen) {
         // i.e. bytes=-YYY
@@ -338,62 +353,80 @@ static int parse_range(struct http_client* client, off_t filesize)
         *hyphen = '\0';  // cap off p
         // bytes=XXX- or bytes=XXX-YYY
         if (strtonum(p, &from)) {
-            goto bad_request;
-        }
-        if (from > filesize) {
-            goto not_satisfiable;
+            return -1;
         }
         if (q) {
             // bytes=XXX-YYY
             if (strtonum(q, &to)) {
-                goto bad_request;
+                return -1;
             }
-            to = to > filesize - 1 ? filesize - 1 : to;
             if (to < from) {
-                goto bad_request;
+                return -1;
             }
-        } else {
-            // bytes=XXX-
-            to = filesize - 1;
         }
     } else if (q) {
         // bytes=-YYY
-        if (strtonum(q, &from)) {
-            goto bad_request;
+        if (strtonum(q, &to)) {
+            return -1;
         }
-        if (from > filesize) {
-            goto not_satisfiable;
-        }
-        from = filesize - from;  // -YYY means "YYY bytes from end" so invert it
-        to = filesize = filesize - 1;
     } else {
         // mm yes `bytes=-`, very good
-        goto bad_request;
+        return -1;
+    }
+
+    *out_from = from;
+    *out_to = to;
+    return 0;
+}
+
+/**
+ * Parse the range request of a client, setting resp_body_pos and resp_body_end fields appropriately (only on success).
+ * Assumes `client->ta.range_requested` is true, and `client->ta.req_range` is set.
+ * Returns -1 if the range is malformed (or multipart), setting `client->ta.resp_status` (resp_body_* unchanged).
+ */
+static int parse_range_request(struct kitserv_client* client, off_t filesize)
+{
+    off_t from, to;
+
+    if (kitserv_http_parse_range(client, &from, &to)) {
+        client->ta.resp_status = HTTP_400_BAD_REQUEST;
+        return -1;
+    }
+
+    // bytes=XXX- or needs clamping
+    if (to < 0 || to > filesize - 1) {
+        to = filesize - 1;
+    }
+
+    // bytes=-YYY
+    if (from < 0) {
+        from = filesize - to;
+        to = filesize - 1;
+    } else if (from > filesize) {
+        client->ta.resp_status = HTTP_416_RANGE_NOT_SATISFIABLE;
+        return -1;
     }
 
     client->ta.resp_body_pos = from;
     client->ta.resp_body_end = to;
     return 0;
-
-bad_request:
-    client->ta.resp_status = HTTP_400_BAD_REQUEST;
-    return -1;
-not_satisfiable:
-    client->ta.resp_status = HTTP_416_RANGE_NOT_SATISFIABLE;
-    return -1;
 }
 
 /**
  * Guess the mime type from a limited list.
- * On null, return text/plain.
+ * On null, return application/octet-stream.
  */
-static const char* guess_mime_type(char* extension)
+static const char* guess_mime_type(const char* extension)
 {
+    // TODO: get a better system for this
+
     if (extension == NULL) {
-        return "text/plain";
+        return "application/octet-stream";
     } else if (!strcasecmp(extension, ".js")) {
         return "text/javascript";
     } else if (!strcasecmp(extension, ".html")) {
+        return "text/html";
+    } else if (!strcasecmp(extension, ".htm")) {
         return "text/html";
     } else if (!strcasecmp(extension, ".css")) {
         return "text/css";
@@ -405,13 +438,21 @@ static const char* guess_mime_type(char* extension)
         return "image/png";
     } else if (!strcasecmp(extension, ".jpg")) {
         return "image/jpeg";
+    } else if (!strcasecmp(extension, ".jpeg")) {
+        return "image/jpeg";
+    } else if (!strcasecmp(extension, ".txt")) {
+        return "text/plain";
+    } else if (!strcasecmp(extension, ".md")) {
+        return "text/plain";
     } else if (!strcasecmp(extension, ".gif")) {
         return "image/gif";
     } else if (!strcasecmp(extension, ".mp4")) {
         return "video/mp4";
+    } else if (!strcasecmp(extension, ".zip")) {
+        return "applicaton/zip";
     }
 
-    return "text/plain";
+    return "application/octet-stream";
 }
 
 /**
@@ -437,7 +478,7 @@ static void url_decode(char* str)
     *r = '\0';
 }
 
-static inline int http_header_add_ap(struct http_client* client, char* key, const char* fmt, va_list* ap)
+static inline int http_header_add_ap(struct kitserv_client* client, const char* key, const char* fmt, va_list* ap)
 {
     int pre_sz;
     pre_sz = client->ta.resp_headers_len;
@@ -448,7 +489,7 @@ static inline int http_header_add_ap(struct http_client* client, char* key, cons
     }
 
     // append value
-    if (str_vappend(client->resp_headers, &client->ta.resp_headers_len, HTTP_BUFSZ, fmt, ap)) {
+    if (str_appendva(client->resp_headers, &client->ta.resp_headers_len, HTTP_BUFSZ, fmt, ap)) {
         goto too_large;
     }
 
@@ -460,12 +501,13 @@ static inline int http_header_add_ap(struct http_client* client, char* key, cons
 
 too_large:
     // couldn't fit the header, reset and return
+    errno = ENOMEM;
     client->ta.resp_headers_len = pre_sz;
     client->ta.resp_status = HTTP_507_INSUFFICIENT_STORAGE;
     return -1;
 }
 
-int http_header_add(struct http_client* client, char* key, char* fmt, ...)
+int kitserv_http_header_add(struct kitserv_client* client, const char* key, const char* fmt, ...)
 {
     va_list ap;
     int ret;
@@ -475,27 +517,17 @@ int http_header_add(struct http_client* client, char* key, char* fmt, ...)
     return ret;
 }
 
-int http_header_add_content_type(struct http_client* client, char* mime)
+int kitserv_http_header_add_content_type(struct kitserv_client* client, const char* mime)
 {
-    return http_header_add(client, "content-type", "%s", mime);
+    return kitserv_http_header_add(client, "content-type", "%s", mime);
 }
 
-int http_header_add_content_type_guess(struct http_client* client, char* extension)
+int kitserv_http_header_add_content_type_guess(struct kitserv_client* client, const char* extension)
 {
-    return http_header_add(client, "content-type", "%s", guess_mime_type(extension));
+    return kitserv_http_header_add(client, "content-type", "%s", guess_mime_type(extension));
 }
 
-int http_header_add_set_cookie(struct http_client* client, const char* fmt, ...)
-{
-    va_list ap;
-    int ret;
-    va_start(ap, fmt);
-    ret = http_header_add_ap(client, "set-cookie", fmt, &ap);
-    va_end(ap);
-    return ret;
-}
-
-int http_header_add_last_modified(struct http_client* client, time_t time)
+int kitserv_http_header_add_last_modified(struct kitserv_client* client, time_t time)
 {
     // take time_t from (struct stat).st_mtim.tv_sec
     struct tm tm;
@@ -503,20 +535,20 @@ int http_header_add_last_modified(struct http_client* client, time_t time)
     if (!gmtime_r(&time, &tm) || !strftime(buf, 32, "%a, %d %b %Y %T GMT", &tm)) {
         return -1;
     }
-    return http_header_add(client, "last-modified", "%s", buf);
+    return kitserv_http_header_add(client, "last-modified", "%s", buf);
 }
 
-static inline int http_header_add_content_range(struct http_client* client, off_t start, off_t end, off_t total)
+static inline int http_header_add_content_range(struct kitserv_client* client, off_t start, off_t end, off_t total)
 {
-    return http_header_add(client, "content-range", "bytes %ld-%ld/%ld", start, end, total);
+    return kitserv_http_header_add(client, "content-range", "bytes %ld-%ld/%ld", start, end, total);
 }
 
-static inline int http_header_add_content_length(struct http_client* client, off_t length)
+static inline int http_header_add_content_length(struct kitserv_client* client, off_t length)
 {
-    return http_header_add(client, "content-length", "%ld", length);
+    return kitserv_http_header_add(client, "content-length", "%ld", length);
 }
 
-static int http_header_add_allow(struct http_client* client)
+static int http_header_add_allow(struct kitserv_client* client)
 {
     const int ALLOW_BODY_MAX = sizeof("GET, PUT, HEAD, POST, DELETE, ");
     char allow_body[ALLOW_BODY_MAX];
@@ -538,13 +570,13 @@ static int http_header_add_allow(struct http_client* client)
         }
         assert(len > 2);
         allow_body[len - 2] = '\0';  // cut off trailing comma
-        return http_header_add(client, "allow", "%s", allow_body);
+        return kitserv_http_header_add(client, "allow", "%s", allow_body);
     } else {
-        return http_header_add(client, "allow", "GET, HEAD");
+        return kitserv_http_header_add(client, "allow", "GET, HEAD");
     }
 }
 
-int http_recv_request(struct http_client* client)
+int kitserv_http_recv_request(struct kitserv_client* client)
 {
     int readrc, i;
     char* p = client->ta.req_parse_blk;   // beginning of unconsumed block
@@ -638,13 +670,9 @@ read_more:
                     goto method_not_recognized;
                 default:
 method_not_recognized:
-                    /*
-                     * It appears as though we should return 405, but that would:
-                     * "indicate that the method received ... is known by the origin server"
-                     * Since we don't recognize the method, a 400 is more apt
-                     */
+                    client->ta.resp_status = HTTP_501_NOT_IMPLEMENTED;
                     client->ta.req_method = HTTP_GET;  // default on errors
-                    goto bad_request;
+                    return -1;
             }
             parse_advance;
             /* fallthrough */
@@ -793,8 +821,8 @@ parse_header:
             return -1;
     }
 
-    client->req_payload = p;  // the payload will follow what we've just parsed
-    client->ta.req_payload_len = client->req_headers_len - (client->req_payload - client->req_headers);
+    client->ta.req_payload = p;  // the payload will follow what we've just parsed
+    client->ta.req_payload_len = client->req_headers_len - (p - client->req_headers);
     client->ta.state = HTTP_STATE_SERVE;
     return 0;
 
@@ -812,9 +840,10 @@ bad_request:
  * assumed_pathlen is the size that path was attempted to be, which may be either invalid or too long (>= PATH_MAX)
  * (if it is so, then the status is set as 414_URI_TOO_LONG)
  */
-static int verify_static_path(struct stat* st, struct http_client* client, int assumed_pathlen, char* path)
+static int verify_static_path(struct stat* st, struct kitserv_client* client, int assumed_pathlen, char* path)
 {
     if (assumed_pathlen < 0 || assumed_pathlen >= PATH_MAX) {
+        errno = ENAMETOOLONG;
         client->ta.resp_status = HTTP_414_URI_TOO_LONG;
     } else if (!stat(path, st) && S_ISREG(st->st_mode)) {
         return 0;
@@ -825,7 +854,8 @@ static int verify_static_path(struct stat* st, struct http_client* client, int a
     return -1;
 }
 
-int http_handle_static_path(struct http_client* client, char* path, struct http_request_context* ctx)
+int kitserv_http_handle_static_path(struct kitserv_client* client, const char* path,
+                                    struct kitserv_request_context* ctx)
 {
     char fname[PATH_MAX];
     struct stat st;
@@ -838,6 +868,7 @@ int http_handle_static_path(struct http_client* client, char* path, struct http_
 
     if (!(client->ta.req_method & HTTP_GET)) {
         // we only allow GET or HEAD here
+        errno = ENOTSUP;
         client->ta.resp_status = HTTP_405_METHOD_NOT_ALLOWED;
         return -1;
     }
@@ -893,6 +924,8 @@ path_set:
             return -1;
         }
         client->ta.resp_fd = rc;
+    } else {
+        client->ta.resp_fd = KITSERV_FD_HEAD;
     }
 
     // resp_body_pos already set - 0
@@ -900,7 +933,7 @@ path_set:
 
     if (client->ta.range_requested) {
         // we have a range request, parse it and set the header
-        if (!parse_range(client, st.st_size)) {
+        if (!parse_range_request(client, st.st_size)) {
             if (http_header_add_content_range(client, client->ta.resp_body_pos, client->ta.resp_body_end, st.st_size)) {
                 client->ta.resp_status = HTTP_500_INTERNAL_ERROR;
                 goto err_closefd;
@@ -909,7 +942,7 @@ path_set:
             // range parsing failed, we ignore the header on bad req but return other errors as-is
             if (client->ta.resp_status != HTTP_400_BAD_REQUEST) {
                 if (client->ta.resp_status == HTTP_416_RANGE_NOT_SATISFIABLE) {
-                    http_header_add(client, "content-range", "*/%ld", st.st_size);
+                    kitserv_http_header_add(client, "content-range", "*/%ld", st.st_size);
                     client->ta.preserve_headers_on_error = true;
                     goto err_closefd;
                 }
@@ -920,8 +953,9 @@ path_set:
     }
 
     // add content type, accept-ranges, and last modified headers
-    if (http_header_add_content_type_guess(client, strrchr(fname, '.')) ||
-        http_header_add(client, "accept-ranges", "bytes") || http_header_add_last_modified(client, st.st_mtim.tv_sec)) {
+    if (kitserv_http_header_add_content_type_guess(client, strrchr(fname, '.')) ||
+        kitserv_http_header_add(client, "accept-ranges", "bytes") ||
+        kitserv_http_header_add_last_modified(client, st.st_mtim.tv_sec)) {
         client->ta.resp_status = HTTP_500_INTERNAL_ERROR;
         goto err_closefd;
     }
@@ -958,7 +992,7 @@ err_closefd:
  * Return 0 if parsing either succeeded or found no matches.
  * Return -1 if parsing found a match for the path, but not the method.
  */
-static int parse_api_tree(struct http_client* client, char* path, struct http_api_tree* current_tree)
+static int parse_api_tree(struct kitserv_client* client, char* path, struct kitserv_api_tree* current_tree)
 {
     int i;
     char *q, *r;
@@ -1008,7 +1042,7 @@ recurse:
     return 0;
 }
 
-int http_serve_request(struct http_client* client)
+int kitserv_http_serve_request(struct kitserv_client* client)
 {
     char* p;
 
@@ -1027,16 +1061,16 @@ int http_serve_request(struct http_client* client)
 
         // hit an endpoint, call to it
         if (client->ta.api_endpoint_hit) {
-            client->ta.api_endpoint_hit(client);
+            client->ta.api_endpoint_hit(client, client->ta.api_internal_data);
             // they must set resp_status to indicate advancement
-            if (client->ta.resp_status == HTTP_X_RESP_STATUS_MISSING) {
+            if (client->ta.resp_status == HTTP_X_RESP_STATUS_UNSET) {
                 return 0;
             }
             goto cont;
         }
     }
     // if here, it's an internal request (either because it didn't match or there was no API tree)
-    http_handle_static_path(client, client->ta.req_path, NULL);
+    kitserv_http_handle_static_path(client, client->ta.req_path, NULL);
 cont:
     client->ta.state = HTTP_STATE_PREPARE_RESPONSE;
     return 0;
@@ -1050,12 +1084,14 @@ static inline const char* get_version_string(enum http_version version)
     } else if (version == HTTP_1_0) {
         return "HTTP/1.0 ";
     } else {
-        fprintf(stderr, "Unknown HTTP version: %d (using HTTP/1.1)\n", version);
+        if (!kitserv_silent_mode) {
+            fprintf(stderr, "Unknown HTTP version: %d (using HTTP/1.1)\n", version);
+        }
         return "HTTP/1.1 ";
     }
 }
 
-static const char* get_status_string(enum http_response_status status)
+static const char* get_status_string(enum kitserv_http_response_status status)
 {
     // \r\n since we're always going to add it anyway
     switch (status) {
@@ -1091,7 +1127,7 @@ static const char* get_status_string(enum http_response_status status)
             return "505 Version Not Supported\r\n";
         case HTTP_507_INSUFFICIENT_STORAGE:
             return "507 Insufficient Storage\r\n";
-        case HTTP_X_RESP_STATUS_MISSING:
+        case HTTP_X_RESP_STATUS_UNSET:
             fprintf(stderr, "Status missing while getting status string\n");
             /* fallthrough */
         case HTTP_500_INTERNAL_ERROR:
@@ -1100,7 +1136,7 @@ static const char* get_status_string(enum http_response_status status)
     }
 }
 
-static inline void prepare_resp_start(struct http_client* client)
+static inline void prepare_resp_start(struct kitserv_client* client)
 {
     // should always fit, unless some idiot changed the buffer size to be too small
     client->ta.resp_start_len = 0;
@@ -1113,7 +1149,7 @@ static inline void prepare_resp_start(struct http_client* client)
 /**
  * Wipe and add headers for a response on a given client
  */
-static int prepare_error_response_headers(struct http_client* client)
+static int prepare_error_response_headers(struct kitserv_client* client)
 {
     client->ta.resp_headers_len = 0;
 
@@ -1127,58 +1163,63 @@ static int prepare_error_response_headers(struct http_client* client)
 /**
  * Wipe and add body content for a response on a given client
  */
-static int prepare_error_response_body(struct http_client* client)
+static int prepare_error_response_body(struct kitserv_client* client)
 {
     client->ta.resp_body_pos = 0;
     client->ta.resp_body_end = 0;
     client->resp_body.len = 0;
     close_fd_to_zero(&client->ta.resp_fd);
 
-    if (http_header_add_content_type(client, "text/plain")) {
+    if (kitserv_http_header_add_content_type(client, "text/plain")) {
         return -1;
     }
 
     switch (client->ta.resp_status) {
         case HTTP_400_BAD_REQUEST:
-            return buffer_append(&client->resp_body, "Bad request.", sizeof("Bad request.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Bad request.", sizeof("Bad request.") - 1);
         case HTTP_403_PERMISSION_DENIED:
-            return buffer_append(&client->resp_body, "Permission denied.", sizeof("Permission denied.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Permission denied.", sizeof("Permission denied.") - 1);
         case HTTP_404_NOT_FOUND:
-            if (buffer_append(&client->resp_body, "Not found: ", sizeof("Not found: ") - 1)) {
+            if (kitserv_buffer_append(&client->resp_body, "Not found: ", sizeof("Not found: ") - 1)) {
                 return -1;
             }
-            return buffer_append(&client->resp_body, client->ta.req_path, strlen(client->ta.req_path));
+            return kitserv_buffer_append(&client->resp_body, client->ta.req_path, strlen(client->ta.req_path));
         case HTTP_405_METHOD_NOT_ALLOWED:
-            return buffer_append(&client->resp_body, "Method not allowed.", sizeof("Method not allowed.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Method not allowed.", sizeof("Method not allowed.") - 1);
         case HTTP_408_REQUEST_TIMEOUT:
-            return buffer_append(&client->resp_body, "Request timeout.", sizeof("Request timeout.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Request timeout.", sizeof("Request timeout.") - 1);
         case HTTP_413_CONTENT_TOO_LARGE:
-            return buffer_append(&client->resp_body, "Content too large.", sizeof("Content too large.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Content too large.", sizeof("Content too large.") - 1);
         case HTTP_414_URI_TOO_LONG:
-            return buffer_append(&client->resp_body, "URI too long.", sizeof("URI too long.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "URI too long.", sizeof("URI too long.") - 1);
         case HTTP_416_RANGE_NOT_SATISFIABLE:
-            return buffer_append(&client->resp_body, "Range not satisfiable.", sizeof("Range not satisfiable.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Range not satisfiable.",
+                                         sizeof("Range not satisfiable.") - 1);
         case HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE:
-            return buffer_append(&client->resp_body, "Request header fields too large.",
-                                 sizeof("Request header fields too large.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Request header fields too large.",
+                                         sizeof("Request header fields too large.") - 1);
         case HTTP_501_NOT_IMPLEMENTED:
-            return buffer_append(&client->resp_body, "Not implemented.", sizeof("Not implemented.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Not implemented.", sizeof("Not implemented.") - 1);
         case HTTP_503_SERVICE_UNAVAILABLE:
-            return buffer_append(&client->resp_body, "Service unavailable.", sizeof("Service unavailable.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Service unavailable.",
+                                         sizeof("Service unavailable.") - 1);
         case HTTP_505_VERSION_NOT_SUPPORTED:
-            return buffer_append(&client->resp_body, "Version not supported.", sizeof("Version not supported.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Version not supported.",
+                                         sizeof("Version not supported.") - 1);
         case HTTP_507_INSUFFICIENT_STORAGE:
-            return buffer_append(&client->resp_body, "Insufficient storage.", sizeof("Insufficient storage.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Insufficient storage.",
+                                         sizeof("Insufficient storage.") - 1);
         case HTTP_500_INTERNAL_ERROR:
-        case HTTP_X_RESP_STATUS_MISSING:
+        case HTTP_X_RESP_STATUS_UNSET:
         default:
-            return buffer_append(&client->resp_body, "Internal server error.", sizeof("Internal server error.") - 1);
+            return kitserv_buffer_append(&client->resp_body, "Internal server error.",
+                                         sizeof("Internal server error.") - 1);
     }
 
     return 0;
 }
 
-int http_prepare_response(struct http_client* client)
+int kitserv_http_prepare_response(struct kitserv_client* client)
 {
     bool already_errored = false;
 
@@ -1197,19 +1238,17 @@ success:
     // others should have been set already
 
     // different measurements based on whether we're sending a file or the body buffer
-    // can't just check if the ta.resp_fd is 0, since HEAD requests will leave it alone
-    // instead, we require that ta.resp_body_end is 0 when sending body buffer, so use that
-    if (client->ta.resp_body_end == 0) {
-        if (http_header_add_content_length(client, client->resp_body.len - client->ta.resp_body_pos)) {
+    if (client->ta.resp_fd) {
+        if (http_header_add_content_length(client, client->ta.resp_body_end - client->ta.resp_body_pos + 1)) {
             goto error_response;
         }
     } else {
-        if (http_header_add_content_length(client, client->ta.resp_body_end - client->ta.resp_body_pos + 1)) {
+        if (http_header_add_content_length(client, client->resp_body.len - client->ta.resp_body_pos)) {
             goto error_response;
         }
     }
 
-    if (http_header_add(client, "server", "%s", server_name)) {
+    if (kitserv_http_header_add(client, "server", "%s", SERVER_NAME)) {
         goto error_response;
     }
 
@@ -1224,27 +1263,29 @@ success:
 error_response:
     // if we error here or end up back here, it is highly unlikely to be salvageable so just drop the connection
     if (already_errored) {
-        fprintf(stderr, "Unsalvageable handling during error number %d.\n", client->ta.resp_status);
+        if (!kitserv_silent_mode) {
+            fprintf(stderr, "Unsalvageable handling during error number %d.\n", client->ta.resp_status);
+        }
         return -1;
     }
-    if (!client->ta.preserve_headers_on_error && prepare_error_response_headers(client)) {
-        return -1;
-    }
-    if (!client->ta.preserve_body_on_error && prepare_error_response_body(client)) {
-        return -1;
+    if (!client->ta.preserve_body_on_error) {
+        if (!client->ta.preserve_headers_on_error && prepare_error_response_headers(client)) {
+            return -1;
+        }
+        if (prepare_error_response_body(client)) {
+            return -1;
+        }
     }
     already_errored = true;
     goto success;
 }
 
-int http_send_response(struct http_client* client)
+int kitserv_http_send_response(struct kitserv_client* client)
 {
     ssize_t rc;
     struct iovec sendbufs[3];
     int sendbufs_idx;
     bool sent_start, sent_head, sent_body;
-
-    // TODO: have some status to know if we need to do this initial loop or we can jump directly to the sendfile bit
 
     do {
         // load buffers that need to be sent
@@ -1262,8 +1303,8 @@ int http_send_response(struct http_client* client)
             sendbufs_idx++;
             sent_head = true;
         }
-        if (client->ta.resp_fd <= 0 && client->ta.req_method != HTTP_HEAD &&
-            client->ta.resp_body_pos <= client->ta.resp_body_end) {
+        if (client->ta.resp_fd == 0 && client->ta.req_method != HTTP_HEAD &&
+            client->ta.resp_body_pos <= client->resp_body.len) {
             sendbufs[sendbufs_idx].iov_base = &client->resp_body.buf[client->ta.resp_body_pos];
             sendbufs[sendbufs_idx].iov_len = client->resp_body.len - client->ta.resp_body_pos;
             sendbufs_idx++;
@@ -1303,7 +1344,7 @@ int http_send_response(struct http_client* client)
         } while (rc > 0);
 #else
         // TODO: send the file here using `send(2)`
-        fprintf(stderr, "Cannot send file.\n");
+        fprintf(stderr, "Kitserv: cannot send file (not implemented).\n");
         client->ta.resp_body_pos = client->ta.resp_body_end + 1;
 #endif
         if (client->ta.resp_body_pos > client->ta.resp_body_end) {

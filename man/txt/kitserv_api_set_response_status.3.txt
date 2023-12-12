@@ -1,0 +1,69 @@
+kitserv_api_set_response_status(3)
+
+SYNOPSIS
+     library "kitserv"
+
+     #include <kitserv.h>
+
+     void
+     kitserv_api_set_response_status(struct kitserv_client*,
+	 enum kitserv_http_response_status);
+
+DESCRIPTION
+     The kitserv_api_set_response_status() function sets the given response
+     status on the client.
+
+     Until the response status has been changed from its default value,
+     HTTP_X_RESP_STATUS_UNSET, Kitserv will continue to call the endpoint han-
+     dler. Once it has been set, returning from the handler will trigger Kit-
+     serv to send the response.
+
+     If a function has changed the response status (for example,
+     http_handle_static_path() on error), this function may be used to revert
+     to HTTP_X_RESP_STATUS_UNSET to prevent replying.
+
+     The supported statuses are as follows:
+
+	 HTTP_X_RESP_STATUS_UNSET
+
+	 HTTP_200_OK
+
+	 HTTP_206_PARTIAL_CONTENT
+
+	 HTTP_304_NOT_MODIFIED
+
+	 HTTP_400_BAD_REQUEST
+
+	 HTTP_403_PERMISSION_DENIED
+
+	 HTTP_404_NOT_FOUND
+
+	 HTTP_408_REQUEST_TIMEOUT
+
+	 HTTP_413_CONTENT_TOO_LARGE
+
+	 HTTP_414_URI_TOO_LONG
+
+	 HTTP_416_RANGE_NOT_SATISFIABLE
+
+	 HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE
+
+	 HTTP_500_INTERNAL_ERROR
+
+	 HTTP_501_NOT_IMPLEMENTED
+
+	 HTTP_503_SERVICE_UNAVAILABLE
+
+	 HTTP_505_VERSION_NOT_SUPPORTED
+
+	 HTTP_507_INSUFFICIENT_STORAGE
+
+     HTTP_405_METHOD_NOT_ALLOWED is also supported, but is reserved for inter-
+     nal use. Endpoints should enforce method restrictions using the API tree.
+
+COPYRIGHT
+     Copyright (c) 2023 Jmcgee1125.
+
+     Kitserv is licensed under the GNU Affero GPL v3. You are free to redis-
+     tribute and modify this code as you see fit, provided that you make the
+     source code freely available under these terms.

@@ -1,0 +1,43 @@
+kitserv_api_get_request_method(3)
+
+SYNOPSIS
+     library "kitserv"
+
+     #include <kitserv.h>
+
+     enum kitserv_http_method
+     kitserv_api_get_request_method(struct kitserv_client*);
+
+DESCRIPTION
+     The kitserv_api_get_request_method() function returns the request method
+     that the client made.
+
+     Note that the API endpoint already defines the endpoint before the func-
+     tion is called. This function exists to support registering the same
+     function for multiple endpoints, or for differentiating between GET and
+     HEAD. Note that Kitserv will make sure that the body is not sent for a
+     HEAD request, but early detection can allow API endpoints from generating
+     the response in the first place if it can serve the HEAD request without
+     doing so.
+
+     The supported methods are as follows:
+
+	 HTTP_GET
+
+	 HTTP_HEAD
+
+	 HTTP_POST
+
+	 HTTP_PUT
+
+	 HTTP_DELETE
+
+RETURN VALUE
+     This function returns the HTTP method as an enum.
+
+COPYRIGHT
+     Copyright (c) 2023 Jmcgee1125.
+
+     Kitserv is licensed under the GNU Affero GPL v3. You are free to redis-
+     tribute and modify this code as you see fit, provided that you make the
+     source code freely available under these terms.

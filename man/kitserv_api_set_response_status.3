@@ -1,0 +1,61 @@
+.Dd December 11, 2023
+.Dt kitserv_api_set_response_status 3
+.Nm kitserv_api_set_response_status(3)
+.Sh SYNOPSIS
+.Pp
+.Lb kitserv
+.Pp
+.In kitserv.h
+.Pp
+.Ft void
+.Fn kitserv_api_set_response_status "struct kitserv_client*" "enum kitserv_http_response_status"
+.Sh DESCRIPTION
+The
+.Sy kitserv_api_set_response_status()
+function sets the given response status on the client.
+.Pp
+Until the response status has been changed from its default value,
+.Em HTTP_X_RESP_STATUS_UNSET , No Kitserv will continue to call the endpoint
+handler. Once it has been set, returning from the handler will trigger
+Kitserv to send the response.
+.Pp
+If a function has changed the response status
+(for example,
+.Sy http_handle_static_path()
+on error), this function may be used to revert to
+.Em HTTP_X_RESP_STATUS_UNSET
+to prevent replying.
+.Pp
+The supported statuses are as follows:
+.in +4n
+.Bl -tag -width Ds
+.It Em HTTP_X_RESP_STATUS_UNSET
+.It Em HTTP_200_OK
+.It Em HTTP_206_PARTIAL_CONTENT
+.It Em HTTP_304_NOT_MODIFIED
+.It Em HTTP_400_BAD_REQUEST
+.It Em HTTP_403_PERMISSION_DENIED
+.It Em HTTP_404_NOT_FOUND
+.It Em HTTP_408_REQUEST_TIMEOUT
+.It Em HTTP_413_CONTENT_TOO_LARGE
+.It Em HTTP_414_URI_TOO_LONG
+.It Em HTTP_416_RANGE_NOT_SATISFIABLE
+.It Em HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE
+.It Em HTTP_500_INTERNAL_ERROR
+.It Em HTTP_501_NOT_IMPLEMENTED
+.It Em HTTP_503_SERVICE_UNAVAILABLE
+.It Em HTTP_505_VERSION_NOT_SUPPORTED
+.It Em HTTP_507_INSUFFICIENT_STORAGE
+.El
+.in -4n
+.Pp
+.Em HTTP_405_METHOD_NOT_ALLOWED
+is also supported, but is reserved for internal use. Endpoints should enforce
+method restrictions using the API tree.
+.Sh COPYRIGHT
+.Pp
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

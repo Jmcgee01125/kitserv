@@ -1,0 +1,97 @@
+.Dd December 11, 2023
+.Dt kitserv_api_get_request_range 3
+.Nm kitserv_api_get_request_range(3)
+.Sh SYNOPSIS
+.Pp
+.Lb kitserv
+.Pp
+.In kitserv.h
+.Pp
+.Ft int
+.Fn kitserv_api_get_request_range "struct kitserv_client*" "off_t* start" "off_t* end"
+.Sh DESCRIPTION
+The
+.Sy kitserv_api_get_request_range()
+function returns a client's range request in the out-parameters
+.Em start
+and
+.Em end . No Kitserv does not support multirange requests.
+.Pp
+A range request header is formatted as any of the following:
+.in +4n
+.Bl -tag -width Ds
+.It range: bytes=10-20
+.It range: bytes=10-
+.It range: bytes=-20
+.El
+.in -4n
+.Pp
+This function will place a value in
+.Em start
+and
+.Em end
+based on where that value is relative to the dash (-). If a value is not
+present (the second and third cases above), this function will instead set
+the corresponding 
+.Em start
+or
+.Em end
+to -1.
+.Pp
+The endpoint should take care to respect RFC 9110's description of range header
+semantics. In particular, when
+.Em end
+is -1, the endpoint should set the end of the range to the length of the
+resource. When
+.Em start
+is -1, the endpoint should set the range to be the last
+.Em end
+bytes of the resource.
+.Sh RETURN VALUE
+On success, this function returns 0. On failure, this function returns -1 but
+does not set errno.
+.Sh EXAMPLES
+The following examples show a sample range header and the corresponding result
+of a call to
+.Sy kitserv_api_get_request_range() . No
+.in +4n
+.Bl -tag -width Ds
+.It range: bytes=10-20
+.Em start
+= 10, 
+.Em end
+= 20
+.It range: bytes=10-
+.Em start
+= 10, 
+.Em end
+= -1
+.It range: bytes=-20
+.Em start
+= -1, 
+.Em end
+= 20
+.It range: lines=10-20
+This function returns -1.
+.It [No range given]
+This function returns -1.
+.El
+.in -4n
+.Sh ERRORS
+This function shall fail if:
+.in +4n
+.Bl -tag -width Ds
+.It The request did not contain a range header.
+.It The range header was malformed.
+.El
+.in -4n
+.Pp
+In either case, the endpoint should treat the request as if the client did not
+make a range request.
+.Sh COPYRIGHT
+.Pp
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

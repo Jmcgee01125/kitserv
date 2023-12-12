@@ -1,0 +1,24 @@
+.Dd December 11, 2023
+.Dt kitserv_api_reset_body 3
+.Nm kitserv_api_reset_body(3)
+.Sh SYNOPSIS
+.Pp
+.Lb kitserv
+.Pp
+.In kitserv.h
+.Pp
+.Ft int
+.Fn kitserv_api_reset_body "struct kitserv_client*"
+.Sh DESCRIPTION
+The
+.Sy kitserv_api_reset_body()
+function clears the response body buffer.
+.Pp
+Note: This does not affect range or file information.
+.Sh COPYRIGHT
+.Pp
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

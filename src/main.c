@@ -1,4 +1,4 @@
-/* FileKit
+/* Kitserv
  * Copyright (C) 2023 Jmcgee01125
  *
  * This program is free software: you can redistribute it and/or modify it
@@ -15,100 +15,91 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "api.h"
-#include "http.h"
-#include "server.h"
+#include "kitserv.h"
 
 #define DEFAULT_PORT_STRING ("8012")
 #define DEFAULT_FALLBACK_PATH ("200.html")
 #define DEFAULT_FALLBACK_ROOT_PATH ("index.html")
-#define DEFAULT_TOKEN_EXP_TIME (60 * 60)
 #define DEFAULT_NUM_WORKERS (2)
 #define DEFAULT_NUM_SLOTS (128)
 
 static void usage(const char* prog_name)
 {
     fprintf(stderr,
-            "Usage: %s -w webdir -d datadir [-p port] [-f fallback] [-r root_fb] [-e seconds] [-t threads] "
-            "[-s slots] [-4] [-6] [-h]\n"
-            "\t-w webdir     Root directory from which to serve frontend files.\n"
-            "\t-d datadir    Root directory to hold data files.\n"
+            "Usage: %s -w webdir [-p port] [-s slots] [-t threads] [-f fallback] [-r root_fb] [-4] [-6] [-h]\n"
+            "\t-w webdir     Root directory from which to serve files.\n"
             "\t-p port       Port to run on (default: %s).\n"
+            "\t-s slots      Number of connection slots to allocate (default: %d).\n"
+            "\t-t threads    Number of worker threads to use for serving clients (default: %d).\n"
             "\t-f fallback   Path to fallback resource (default: %s).\n"
             "\t-r root_fb    Path to fallback resource when the path is / (default: %s).\n"
-            "\t-e seconds    Login token expiration time, in seconds (default: %d).\n"
-            "\t-t threads    Number of worker threads to use for serving clients (default: %d).\n"
-            "\t-s slots      Number of slots to use per worker thread (default: %d).\n"
             "\t-4            Bind IPv4 only.\n"
             "\t-6            Bind IPv6 only, or both when dual binding is enabled (falls back to IPv4 if no IPv6).\n"
             "\t-h            Show this help.\n",
-            prog_name, DEFAULT_PORT_STRING, DEFAULT_FALLBACK_PATH, DEFAULT_FALLBACK_ROOT_PATH, DEFAULT_TOKEN_EXP_TIME,
-            DEFAULT_NUM_WORKERS, DEFAULT_NUM_SLOTS);
+            prog_name, DEFAULT_PORT_STRING, DEFAULT_NUM_WORKERS, DEFAULT_NUM_SLOTS, DEFAULT_FALLBACK_PATH,
+            DEFAULT_FALLBACK_ROOT_PATH);
     exit(1);
 }
 
 int main(int argc, char* argv[])
 {
-    bool bind_ipv4 = true;
-    bool bind_ipv6 = true;
-    int num_workers = DEFAULT_NUM_WORKERS;
-    int num_slots = DEFAULT_NUM_SLOTS;
-    char* port_string = DEFAULT_PORT_STRING;
-    int auth_exp_time = DEFAULT_TOKEN_EXP_TIME;
-    struct http_api_tree* http_api_tree = NULL;
-    char* http_cookie_name;
-    char* filekit_directory = NULL;
-    struct http_request_context http_root_context;
+    struct kitserv_request_context root_context;
+    struct kitserv_config config;
     int opt;
 
-    http_root_context = (struct http_request_context){
+    root_context = (struct kitserv_request_context){
         .root = NULL,
         .root_fallback = DEFAULT_FALLBACK_ROOT_PATH,
         .fallback = DEFAULT_FALLBACK_PATH,
         .use_http_append_fallback = true,
     };
 
-    while ((opt = getopt(argc, argv, "w:d:p:f:r:e:t:s:46h")) != -1) {
+    config = (struct kitserv_config){
+        .port_string = DEFAULT_PORT_STRING,
+        .num_workers = DEFAULT_NUM_WORKERS,
+        .num_slots = DEFAULT_NUM_SLOTS,
+        .bind_ipv4 = true,
+        .bind_ipv6 = true,
+        .silent_mode = false,
+        .http_root_context = &root_context,
+        .api_tree = NULL,
+    };
+
+    while ((opt = getopt(argc, argv, "w:p:s:t:f:r:46h")) != -1) {
         switch (opt) {
             case 'w':
-                http_root_context.root = optarg;
-                break;
-            case 'd':
-                filekit_directory = optarg;
+                root_context.root = optarg;
                 break;
             case 'p':
-                port_string = optarg;
-                break;
-            case 'f':
-                http_root_context.fallback = optarg;
-                break;
-            case 'r':
-                http_root_context.root_fallback = optarg;
-                break;
-            case 'e':
-                auth_exp_time = atoi(optarg);
-                break;
-            case 't':
-                num_workers = atoi(optarg);
-                if (num_workers < 1) {
-                    fprintf(stderr, "Invalid worker count (%d).\n", num_workers);
-                    exit(1);
-                }
+                config.port_string = optarg;
                 break;
             case 's':
-                num_slots = atoi(optarg);
-                if (num_slots < 1) {
-                    fprintf(stderr, "Invalid slot count (%d).\n", num_slots);
+                config.num_slots = atoi(optarg);
+                if (config.num_slots < 1) {
+                    fprintf(stderr, "Invalid slot count (%d).\n", config.num_slots);
                     exit(1);
                 }
                 break;
+            case 't':
+                config.num_workers = atoi(optarg);
+                if (config.num_workers < 1) {
+                    fprintf(stderr, "Invalid worker count (%d).\n", config.num_workers);
+                    exit(1);
+                }
+                break;
+            case 'f':
+                root_context.fallback = optarg;
+                break;
+            case 'r':
+                root_context.root_fallback = optarg;
+                break;
             case '4':
-                bind_ipv4 = true;
-                bind_ipv6 = false;
+                config.bind_ipv4 = true;
+                config.bind_ipv6 = false;
                 break;
             case '6':
-                bind_ipv4 = false;
-                bind_ipv6 = true;
+                config.bind_ipv4 = false;
+                config.bind_ipv6 = true;
                 break;
             case 'h':
             default:
@@ -116,17 +107,14 @@ int main(int argc, char* argv[])
         }
     }
 
-    if (!http_root_context.root || !filekit_directory) {
+    if (!root_context.root) {
         usage(argv[0]);
     }
 
-    printf("Starting on port %s.\n", port_string);
-    printf("Web root:  %s\n", http_root_context.root);
-    printf("Data root: %s\n", filekit_directory);
+    printf("Starting on port %s.\n", config.port_string);
+    printf("Web root:  %s\n", root_context.root);
 
-    api_init(&http_api_tree, &http_cookie_name, filekit_directory, auth_exp_time);
-    http_init("FileKit", &http_root_context, http_cookie_name, http_api_tree);
-    server_start(port_string, bind_ipv4, bind_ipv6, num_workers, num_slots);
+    kitserv_server_start(&config);
 
     return 0;
 }

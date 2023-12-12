@@ -1,0 +1,73 @@
+kitserv_api_get_request_range(3)
+
+SYNOPSIS
+     library "kitserv"
+
+     #include <kitserv.h>
+
+     int
+     kitserv_api_get_request_range(struct kitserv_client*, off_t* start,
+	 off_t* end);
+
+DESCRIPTION
+     The kitserv_api_get_request_range() function returns a client's range re-
+     quest in the out-parameters start and end. Kitserv does not support
+     multirange requests.
+
+     A range request header is formatted as any of the following:
+
+	 range: bytes=10-20
+
+	 range: bytes=10-
+
+	 range: bytes=-20
+
+     This function will place a value in start and end based on where that
+     value is relative to the dash (-). If a value is not present (the second
+     and third cases above), this function will instead set the corresponding
+     start or end to -1.
+
+     The endpoint should take care to respect RFC 9110's description of range
+     header semantics. In particular, when end is -1, the endpoint should set
+     the end of the range to the length of the resource. When start is -1, the
+     endpoint should set the range to be the last end bytes of the resource.
+
+RETURN VALUE
+     On success, this function returns 0. On failure, this function returns -1
+     but does not set errno.
+
+EXAMPLES
+     The following examples show a sample range header and the corresponding
+     result of a call to kitserv_api_get_request_range().
+
+	 range: bytes=10-20
+		 start = 10, end = 20
+
+	 range: bytes=10-
+		 start = 10, end = -1
+
+	 range: bytes=-20
+		 start = -1, end = 20
+
+	 range: lines=10-20
+		 This function returns -1.
+
+	 [No range given]
+		 This function returns -1.
+
+ERRORS
+     This function shall fail if:
+
+	 The request did not contain a range header.
+
+	 The range header was malformed.
+
+     In either case, the endpoint should treat the request as if the client
+     did not make a range request.
+
+COPYRIGHT
+     Copyright (c) 2023 Jmcgee1125.
+
+     Kitserv is licensed under the GNU Affero GPL v3. You are free to redis-
+     tribute and modify this code as you see fit, provided that you make the
+     source code freely available under these terms.

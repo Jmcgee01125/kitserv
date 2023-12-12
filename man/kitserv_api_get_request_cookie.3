@@ -1,0 +1,49 @@
+.Dd December 11, 2023
+.Dt kitserv_api_get_request_cookie 3
+.Nm kitserv_api_get_request_cookie(3)
+.Sh SYNOPSIS
+.Pp
+.Lb kitserv
+.Pp
+.In kitserv.h
+.Pp
+.Ft const char*
+.Fn kitserv_api_get_request_cookie "struct kitserv_client*" "const char* key"
+.Ft const char*
+.Fn kitserv_api_get_request_cookie_n "struct kitserv_client*" "const char* key" "int keylen"
+.Sh DESCRIPTION
+The
+.Sy kitserv_api_get_request_cookie()
+function retrieves a cookie from the request headers, or NULL if no cookie by
+that name exists.
+.Pp
+The
+.Sy kitserv_api_get_request_cookie_n()
+function retrieves a cookie with a precalculated key length (not cookie value
+length). Kitserv skips cookies if the key length does not match, so this
+function removes the (small) overhead of calculating the length of the key.
+.Pp
+Because Kitserv preallocates storage for all request information, there is a
+hard limit on the number of cookies that Kitserv will store. If a client sends
+more cookies, it is possible that the cookie with the requested key is
+discarded. The maximum number of cookies is defined such that most browsers
+will not send that many cookies in the first place, which should prevent this
+issue. Regardless, API endpoints relying on cookies should avoid setting too
+many, especially if hosted on a subdomain.
+.Sh RETURN VALUE
+On success, these functions return a pointer to a null-terminated cookie value
+string or NULL if no cookie with that key exists. On failure, they return NULL,
+setting errno.
+.Sh ERRORS
+These functions shall fail if:
+.Bl -tag -width Ds
+.It Sy EINVAL
+The key is NULL, or the keylen is invalid.
+.El
+.Sh COPYRIGHT
+.Pp
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

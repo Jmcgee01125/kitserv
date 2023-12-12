@@ -1,0 +1,67 @@
+.Dd December 6, 2023
+.Dt Kitserv 1
+.Nm Kitserv(1)
+.Nd Simple Fully-Static File Server
+.Sh SYNOPSIS
+.Pp
+.Sy kitserv
+.Fl w Ar webdir
+.Op Fl p Ar port
+.Op Fl s Ar slots
+.Op Fl t Ar threads
+.Op Fl f Ar fallback
+.Op Fl r Ar root_fallback
+.Op Fl 4
+.Op Fl 6
+.Op Fl h
+.Sh DESCRIPTION
+.Pp
+Kitserv is a simple static file server to host any given directory as a static web server.
+.Pp
+Kitserv does not require anything more than its executable to run - it is not a
+daemon nor does it create any external dependencies such as log files
+(information is sent to standard output streams).
+.Pp
+Shut down Kitserv by sending SIGINT or SIGTERM.
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl w Ar webdir
+Path to directory that will be hosted.
+.It Op Fl p Ar port
+Port to run on.
+.It Op Fl s Ar slots
+Number of connection slots in total.
+Kitserv preallocates all slots, so expansion is not possible.
+Note that clients may experience connection issues as the load nears its peak,
+though Kitserv will do its best to serve every client it can.
+.It Op Fl t Ar threads
+Number of threads to use to serve clients.
+.It Op Fl f Ar fallback
+File to serve when the requested path is not accessible.
+This location is relative to webdir.
+.It Op Fl r Ar root_fallback
+File to serve when the requested path is /.
+This location is relative to webdir.
+.It Op Fl 4
+Bind IPv4 address only.
+.It Op Fl 6
+Bind IPv6 address only. If enabled on the system, use dual binding.
+.It Op Fl h
+Show help information and configured default values.
+.El
+.Sh EXAMPLES
+.Pp
+Run a dual-bound server on the directory `./web`
+.Dl kitserv -w ./web -6
+.Pp
+Run an IPv4-only server with support for 10000 clients using 16 threads on the directory `./web`
+.Dl kitserv -w ./web -t 8 -s 10000 -4
+.Pp
+Run a server with fallbacks enabled on the directory `./web`
+.Dl kitserv -w ./web -f /200.html -r /index.html
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

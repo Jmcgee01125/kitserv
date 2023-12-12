@@ -1,4 +1,4 @@
-/* Part of FileKit, licensed under the GNU Affero GPL. */
+/* Part of Kitserv, licensed under the GNU Affero GPL. */
 
 #ifndef API_H
 #define API_H

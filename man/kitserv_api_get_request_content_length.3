@@ -1,0 +1,24 @@
+.Dd December 11, 2023
+.Dt kitserv_api_get_request_content_length 3
+.Nm kitserv_api_get_request_content_length(3)
+.Sh SYNOPSIS
+.Pp
+.Lb kitserv
+.Pp
+.In kitserv.h
+.Pp
+.Ft off_t
+.Fn kitserv_api_get_request_content_length "struct kitserv_client*"
+.Sh DESCRIPTION
+The
+.Sy kitserv_api_get_request_content_length()
+this function returns the content length of the client's request. If the
+client did not provide a content-length header, this function returns 0.
+.Pp
+.Sh COPYRIGHT
+.Pp
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

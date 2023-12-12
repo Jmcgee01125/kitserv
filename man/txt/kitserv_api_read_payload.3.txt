@@ -1,0 +1,51 @@
+kitserv_api_read_payload(3)
+
+SYNOPSIS
+     library "kitserv"
+
+     #include <kitserv.h>
+
+     int
+     kitserv_api_read_payload(struct kitserv_client*, char* buf, int nbytes);
+
+DESCRIPTION
+     The kitserv_api_read_payload() function reads up to nbytes from the
+     client, as payload data. This data is written into buf, which should be
+     at least nbytes long.
+
+     Once the data is read by this function, it is considered "consumed" and
+     will not be returned in any future calls. The endpoint is responsible for
+     making sure that it does not read more than content-length bytes.
+
+     Because Kitserv uses nonblocking sockets, it is possible that this re-
+     quest blocks. If this happens, the endpoint should return from the han-
+     dler function and give control back to Kitserv. So long as the HTTP re-
+     sponse status is not set (it is HTTP_X_RESP_STATUS_UNSET) then Kitserv
+     will re-call the handler when more data is available. Endpoints may make
+     use of kitserv_api_save_state() to keep track of information between
+     calls.
+
+     If the read suffers an error besides blocking, Kitserv will hang up on
+     the client. Take this opportunity to close any resources in use by the
+     endpoint before returning.
+
+RETURN VALUE
+     On success, this function returns the actual number of bytes read (nbytes
+     or fewer). On failure, this function returns -1, setting errno and possi-
+     bly setting the response status to HTTP_X_HANGUP.
+
+ERRORS
+     This function shall fail if:
+
+     EAGAIN / EWOULDBLOCK
+	     The underlying read blocked because not enough data is available.
+
+     This function may also fail for any other reason read(2) might fail. If
+     this occurs, the response status will be set to HTTP_X_HANGUP.
+
+COPYRIGHT
+     Copyright (c) 2023 Jmcgee1125.
+
+     Kitserv is licensed under the GNU Affero GPL v3. You are free to redis-
+     tribute and modify this code as you see fit, provided that you make the
+     source code freely available under these terms.

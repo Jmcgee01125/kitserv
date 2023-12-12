@@ -1,0 +1,45 @@
+kitserv_api_write_body(3)
+
+SYNOPSIS
+     library "kitserv"
+
+     #include <kitserv.h>
+
+     int
+     kitserv_api_write_body(struct kitserv_client*, char* buf, char* buflen);
+
+     int
+     kitserv_api_write_body_fmt(struct kitserv_client*, const char* fmt, ...);
+
+DESCRIPTION
+     The kitserv_api_write_body() function writes buflen bytes from buf into
+     the response body.
+
+     The kitserv_api_write_body_fmt() function writes a printf-style format
+     string into the response body.
+
+     Unless indicated otherwise, Kitserv will send the entire response body to
+     the client. To send a subset, use kitserv_api_set_send_range(). Note that
+     Kitserv will always send until the end of the buffer, so setting the send
+     range will only affect the start offset.
+
+     Note that, if Kitserv has been indicated to send a file, that takes
+     precedence over sending this body buffer. For more information, see
+     kitserv_api_send_file().
+
+RETURN VALUE
+     On success, these functions return the number of bytes written. On fail-
+     ure, they return -1, setting errno.
+
+ERRORS
+     These functions shall fail if:
+
+     ENOMEM  The response body buffer needed to expand, but space was not
+	     available.
+
+COPYRIGHT
+     Copyright (c) 2023 Jmcgee1125.
+
+     Kitserv is licensed under the GNU Affero GPL v3. You are free to redis-
+     tribute and modify this code as you see fit, provided that you make the
+     source code freely available under these terms.

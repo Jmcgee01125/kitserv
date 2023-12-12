@@ -1,0 +1,30 @@
+.Dd December 11, 2023
+.Dt kitserv_api_save_state 3
+.Nm kitserv_api_save_state(3)
+.Sh SYNOPSIS
+.Pp
+.Lb kitserv
+.Pp
+.In kitserv.h
+.Pp
+.Ft void
+.Fn kitserv_api_save_state "struct kitserv_client*" "void* state"
+.Sh DESCRIPTION
+The
+.Sy kitserv_api_save_state()
+function saves the given
+.Em state
+variable in the client information.
+.Pp
+This is the same state variable passed to the endpoint's handler function,
+which is NULL when first called. Using this function allows an endpoint to
+recognize that it has already done some processing for a client, e.g., when
+.Sy kitserv_api_read_payload()
+had previously blocked.
+.Sh COPYRIGHT
+.Pp
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

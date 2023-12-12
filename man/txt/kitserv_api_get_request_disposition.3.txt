@@ -1,0 +1,21 @@
+kitserv_api_get_request_disposition(3)
+
+SYNOPSIS
+     library "kitserv"
+
+     #include <kitserv.h>
+
+     const char*
+     kitserv_api_get_request_disposition(struct kitserv_client*);
+
+DESCRIPTION
+     The kitserv_api_get_request_disposition() function returns a pointer to a
+     null-terminated string for the client's value in the content-disposition
+     header.
+
+COPYRIGHT
+     Copyright (c) 2023 Jmcgee1125.
+
+     Kitserv is licensed under the GNU Affero GPL v3. You are free to redis-
+     tribute and modify this code as you see fit, provided that you make the
+     source code freely available under these terms.

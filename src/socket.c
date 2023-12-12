@@ -1,4 +1,4 @@
-/* Part of FileKit, licensed under the GNU Affero GPL. */
+/* Part of Kitserv, licensed under the GNU Affero GPL. */
 
 #ifdef __linux__
 #define _GNU_SOURCE
@@ -22,6 +22,8 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include "kitserv.h"
 
 /* Set the given socket as nonblocking. */
 static int socket_setnonblock(int socket)
@@ -117,12 +119,12 @@ static int find_and_bind_socket(const char* port_string, int family, bool nonblo
     return -1;
 }
 
-int socket_prepare(const char* port_string, bool use_ipv6, bool nonblocking_accepts)
+int kitserv_socket_prepare(const char* port_string, bool use_ipv6, bool nonblocking_accepts)
 {
     return find_and_bind_socket(port_string, use_ipv6 ? AF_INET6 : AF_INET, nonblocking_accepts);
 }
 
-int socket_accept(int sockfd)
+int kitserv_socket_accept(int sockfd)
 {
     struct sockaddr_storage peer;
     socklen_t peersize = sizeof(peer);
@@ -132,22 +134,15 @@ int socket_accept(int sockfd)
 #ifdef __linux__
     client = accept4(sockfd, (struct sockaddr*)&peer, &peersize, SOCK_NONBLOCK);
     if (client == -1) {
-        if (errno != EWOULDBLOCK && errno != EAGAIN) {
-            perror("accept");
-        }
         return -1;
     }
 #else
     client = accept(sockfd, (struct sockaddr*)&peer, &peersize);
     if (client == -1) {
-        if (errno != EWOULDBLOCK && errno != EAGAIN) {
-            perror("accept");
-        }
         return -1;
     }
     if (socket_setnonblock(sockfd)) {
         close(sockfd);
-        perror("fcntl nonblock");
         return -1;
     }
 #endif
@@ -155,21 +150,25 @@ int socket_accept(int sockfd)
     // disable Nagle's algorithm, see tcp(7)
     opt = 1;
     if (setsockopt(client, IPPROTO_TCP, TCP_NODELAY, (void*)&opt, sizeof(opt))) {
-        perror("setsockopt");
+        if (!kitserv_silent_mode) {
+            perror("setsockopt");
+        }
     }
 
-    rc = getnameinfo((struct sockaddr*)&peer, peersize, peer_addr, sizeof peer_addr, peer_port, sizeof peer_port,
-                     NI_NUMERICHOST | NI_NUMERICSERV);
-    if (rc) {
-        fprintf(stderr, "Client accepted (getnameinfo: %s)\n", gai_strerror(rc));
-    } else {
-        printf("Client accepted from %s:%s\n", peer_addr, peer_port);
+    if (!kitserv_silent_mode) {
+        rc = getnameinfo((struct sockaddr*)&peer, peersize, peer_addr, sizeof peer_addr, peer_port, sizeof peer_port,
+                         NI_NUMERICHOST | NI_NUMERICSERV);
+        if (rc) {
+            fprintf(stderr, "Client accepted (getnameinfo: %s)\n", gai_strerror(rc));
+        } else {
+            printf("Client accepted from %s:%s\n", peer_addr, peer_port);
+        }
     }
 
     return client;
 }
 
-int socket_close(int sockfd)
+int kitserv_socket_close(int sockfd)
 {
     int save_errno;
     if (shutdown(sockfd, SHUT_RDWR)) {

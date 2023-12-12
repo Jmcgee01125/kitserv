@@ -1,4 +1,4 @@
-/* Part of FileKit, licensed under the GNU Affero GPL. */
+/* Part of Kitserv, licensed under the GNU Affero GPL. */
 
 #include "queue.h"
 
@@ -12,7 +12,7 @@
 // TODO: make a kqueue wrapper as well
 #endif
 
-int queue_init()
+int kitserv_queue_init()
 {
     int qfd;
 #ifdef __linux__
@@ -24,12 +24,11 @@ int queue_init()
     return qfd;
 }
 
-ssize_t queue_wait(int qfd, queue_event* out_events, int n)
+ssize_t kitserv_queue_wait(int qfd, queue_event* out_events, int n)
 {
     ssize_t nready;
 #ifdef __linux__
     if ((nready = epoll_wait(qfd, out_events, n, -1)) < 0) {
-        perror("epoll_wait");
         return -1;
     }
 #else
@@ -37,7 +36,7 @@ ssize_t queue_wait(int qfd, queue_event* out_events, int n)
     return nready;
 }
 
-int queue_add(int qfd, int fd, void* data, queue_wait_cond type, int shared)
+int kitserv_queue_add(int qfd, int fd, void* data, queue_wait_cond type, int shared)
 {
 #ifdef __linux__
     struct epoll_event e;
@@ -54,7 +53,6 @@ int queue_add(int qfd, int fd, void* data, queue_wait_cond type, int shared)
     }
     e.data.ptr = data;
     if (epoll_ctl(qfd, EPOLL_CTL_ADD, fd, &e) < 0) {
-        perror("epoll_ctl");
         return -1;
     }
 #else
@@ -62,7 +60,7 @@ int queue_add(int qfd, int fd, void* data, queue_wait_cond type, int shared)
     return 0;
 }
 
-int queue_rearm(int qfd, int fd, void* data, queue_wait_cond type, int shared)
+int kitserv_queue_rearm(int qfd, int fd, void* data, queue_wait_cond type, int shared)
 {
 #ifdef __linux__
     struct epoll_event e;
@@ -79,7 +77,6 @@ int queue_rearm(int qfd, int fd, void* data, queue_wait_cond type, int shared)
     }
     e.data.ptr = data;
     if (epoll_ctl(qfd, EPOLL_CTL_MOD, fd, &e) < 0) {
-        perror("epoll_ctl");
         return -1;
     }
 #else
@@ -87,12 +84,11 @@ int queue_rearm(int qfd, int fd, void* data, queue_wait_cond type, int shared)
     return 0;
 }
 
-int queue_remove(int qfd, int fd)
+int kitserv_queue_remove(int qfd, int fd)
 {
 #ifdef __linux__
     struct epoll_event e;
     if (epoll_ctl(qfd, EPOLL_CTL_DEL, fd, &e) < 0) {
-        perror("epoll_ctl");
         return -1;
     }
 #else
@@ -100,7 +96,7 @@ int queue_remove(int qfd, int fd)
     return 0;
 }
 
-void* queue_event_to_data(const queue_event* event)
+void* kitserv_queue_event_to_data(const queue_event* event)
 {
 #ifdef __linux__
     return event->data.ptr;

@@ -1,4 +1,4 @@
-/* Part of FileKit, licensed under the GNU Affero GPL. */
+/* Part of Kitserv, licensed under the GNU Affero GPL. */
 
 #include "buffer.h"
 
@@ -9,7 +9,7 @@
 
 #define BUFFER_INCREMENT (256)
 
-int buffer_init(buffer_t* buffer, off_t initial_size)
+int kitserv_buffer_init(buffer_t* buffer, off_t initial_size)
 {
     buffer->buf = malloc(initial_size);
     if (buffer->buf == NULL) {
@@ -20,12 +20,12 @@ int buffer_init(buffer_t* buffer, off_t initial_size)
     return 0;
 }
 
-void buffer_free(buffer_t* buffer)
+void kitserv_buffer_free(buffer_t* buffer)
 {
     free(buffer->buf);
 }
 
-void buffer_reset(buffer_t* buffer, off_t size)
+void kitserv_buffer_reset(buffer_t* buffer, off_t size)
 {
     buffer->len = 0;
     if (buffer->max > size) {
@@ -37,7 +37,7 @@ void buffer_reset(buffer_t* buffer, off_t size)
     }
 }
 
-static inline char* buffer_ensure_space(buffer_t* buffer, off_t n)
+static inline char* kitserv_buffer_ensure_space(buffer_t* buffer, off_t n)
 {
     if (buffer->len + n >= buffer->max) {
         off_t new_max = (n / BUFFER_INCREMENT + 1) * BUFFER_INCREMENT;  // min increments to fit
@@ -51,9 +51,9 @@ static inline char* buffer_ensure_space(buffer_t* buffer, off_t n)
     return &buffer->buf[buffer->len];
 }
 
-int buffer_append(buffer_t* buffer, void* elems, off_t n)
+int kitserv_buffer_append(buffer_t* buffer, const void* elems, off_t n)
 {
-    char* loc = buffer_ensure_space(buffer, n);
+    char* loc = kitserv_buffer_ensure_space(buffer, n);
     if (!loc) {
         return -1;
     }
@@ -62,23 +62,29 @@ int buffer_append(buffer_t* buffer, void* elems, off_t n)
     return 0;
 }
 
-int buffer_appendf(buffer_t* buffer, char* fmt, ...)
+int kitserv_buffer_appendva(buffer_t* buffer, const char* fmt, va_list* ap)
 {
-    va_list ap;
     int rc;
 
-    va_start(ap, fmt);
-    rc = vsnprintf(&buffer->buf[buffer->len], buffer->max - buffer->len, fmt, ap);
+    rc = vsnprintf(&buffer->buf[buffer->len], buffer->max - buffer->len, fmt, *ap);
     if (rc > buffer->max - buffer->len) {
         // failed - would have overrun the buffer (so, expand and retry)
-        buffer_ensure_space(buffer, rc);
-        rc = vsnprintf(&buffer->buf[buffer->len], buffer->max - buffer->len, fmt, ap);
+        kitserv_buffer_ensure_space(buffer, rc);
+        rc = vsnprintf(&buffer->buf[buffer->len], buffer->max - buffer->len, fmt, *ap);
         if (rc > buffer->max - buffer->len) {
-            va_end(ap);
             return -1;
         }
     }
     buffer->len += rc;
-    va_end(ap);
     return 0;
+}
+
+int kitserv_buffer_appendf(buffer_t* buffer, const char* fmt, ...)
+{
+    va_list ap;
+    int rc;
+    va_start(ap, fmt);
+    rc = kitserv_buffer_appendva(buffer, fmt, &ap);
+    va_end(ap);
+    return rc;
 }

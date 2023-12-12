@@ -1,0 +1,47 @@
+.Dd December 11, 2023
+.Dt kitserv_api_set_send_range 3
+.Nm kitserv_api_set_send_range(3)
+.Sh SYNOPSIS
+.Pp
+.Lb kitserv
+.Pp
+.In kitserv.h
+.Pp
+.Ft int
+.Fn kitserv_api_set_send_range "struct kitserv_client*" "off_t from" "off_t to"
+.Sh DESCRIPTION
+The
+.Sy kitserv_api_set_send_range()
+function sets the range to send the response from, byte-inclusive.
+.Pp
+Note that
+.Em to
+is ignored when sending a request from a body (not a file). Kitserv will
+always send until the end of the buffer.
+.Pp
+It is the endpoint's responsibility to ensure that
+.Em to
+does not exceed the length of the file being sent.
+.Pp
+This function does not set the content-range header on the response. Use
+.Sy kitserv_http_header_add() . No
+.Sh RETURN VALUE
+On success, this function returns 0. On failure, this function returns -1,
+setting errno.
+.Sh ERRORS
+These functions shall fail if:
+.Bl -tag -width Ds
+.It Sy EINVAL
+Either
+.Em from
+or
+.Em to
+is negative.
+.El
+.Sh COPYRIGHT
+.Pp
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

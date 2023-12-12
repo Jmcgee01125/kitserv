@@ -1,0 +1,159 @@
+kitserv_server_start(3)
+
+SYNOPSIS
+     library "kitserv"
+
+     #include <kitserv.h>
+
+     struct kitserv_config {
+	 char* port_string;
+	 int num_workers;
+	 int num_slots;
+	 bool bind_ipv4;
+	 bool bind_ipv6;
+	 bool silent_mode;
+	 struct kitserv_request_context* http_root_context;
+	 struct kitserv_api_tree* api_tree;
+     };
+
+     struct kitserv_request_context {
+	 char* root;
+	 char* root_fallback;
+	 char* fallback;
+	 bool use_http_append_fallback;
+     };
+
+     struct kitserv_api_entry {
+	 char* prefix;
+	 int prefix_length;
+	 enum kitserv_http_method method;
+	 kitserv_api_handler_t handler;
+	 bool finishes_path;
+     };
+
+     struct kitserv_api_tree {
+	 char* prefix;
+	 int prefix_length;
+	 struct kitserv_api_tree* subtrees;
+	 struct kitserv_api_entry* entries;
+	 int num_subtrees;
+	 int num_entries;
+     };
+
+     void
+     kitserv_server_start(struct kitserv_config*);
+
+DESCRIPTION
+     The kitserv_server_start() function initializes and starts an instance of
+     the Kitserv web server.
+
+     struct kitserv_config contains the configuration for this instance. The
+     entries of that struct are defined as follows:
+
+	 char* port_string
+		 Port to run on, as a string (e.g. "8012").
+
+	 int num_workers
+		 Number of worker threads to use.
+
+	 int num_slots
+		 Number of connection slots to use. Kitserv preallocates these
+		 slots, this is a hard limit.
+
+	 bool bind_ipv4
+		 Bind IPv4 only.
+
+	 bool bind_ipv6
+		 Bind IPv6, using dual binding if enabled. IPv6 binding hap-
+		 pens before IPv4 binding.
+
+	 bool silent_mode
+		 Disable non-catastrophic error prints and logging. Not all
+		 printouts are removed, only logging and most recoverable er-
+		 rors.
+
+	 struct kitserv_request_context* http_root_context;
+		 Default web context to serve from.
+
+	 struct kitserv_api_tree* api_tree
+		 API endpoint tree to serve API requests into. Use NULL for
+		 this field to disable the API entirely.
+
+     struct kitserv_request_context Defines a static file server context. This
+     includes the main web directory and fallback handling. The entries of
+     that struct are defined as follows:
+
+	 char* root
+		 Root directory to serve files from.
+
+	 char* root_fallback
+		 Fallback resource to serve when the request path is /. This
+		 location is relative to the main root. Example: "/index.html"
+
+	 char* fallback
+		 Fallback resource to serve when the request path does not ex-
+		 ist. This location is relative to the main root. Example:
+		 "/200.html"
+
+	 bool use_http_append_fallback
+		 Retry request with .html appended if the original path does
+		 not exist. Example: "/public" -> "/public.html"
+
+     struct kitserv_api_tree defines API trees and subtrees for parsing.
+     struct kitserv_api_entry defines an API endpoint. When a request arrives,
+     Kitserv splits the path on / characters and iterates the tree. Each sub-
+     tree or entry contains a prefix field which is compared against the cur-
+     rent path element. If an entry's prefix and HTTP request method matches,
+     the API handler function is called. The handler function takes a data ar-
+     gument, which can be preserved across calls (if set by the handler).
+
+     The fields of struct kitserv_api_tree are defined as follows:
+
+	 char* prefix
+		 Prefix of this subtree. Includes no / characters. The API
+		 tree root has no prefix, it is always iterated.
+
+	 int prefix_length
+		 Length of this subtree's prefix.
+
+	 struct kitserv_api_tree* subtrees
+		 Array of subtrees for this tree.
+
+	 struct kitserv_api_entry* entries
+		 Array of API endpoints for this tree.
+
+	 int num_subtrees
+		 Number of subtrees in array.
+
+	 int num_entries
+		 Number of endpoints in array.
+
+     The fields of struct kitserv_api_entry are defined as follows:
+
+	 char* prefix
+		 Prefix of this subtree. Includes no / characters.
+
+	 int prefix_length
+		 Length of this subtree's prefix.
+
+	 enum kitserv_http_method method
+		 HTTP method accepted by this endpoint.  HTTP_GET and
+		 HTTP_HEAD are both serviced by endpoints declared as HTTP_GET
+		 do not use HTTP_HEAD directly here.
+
+	 kitserv_api_handler_t handler
+		 Handler function to do API parsing. This function will be re-
+		 peatedly called until the response status is set.
+
+	 bool finishes_path
+		 If true, do not allow any additional path elements. For exam-
+		 ple, "/api/login/extra" will not be entered for "/api/login"
+		 if this is true. (Note that the entry itself would actually
+		 have the prefix "login", with its parent tree having "api").
+
+COPYRIGHT
+     Copyright (c) 2023 Jmcgee1125.
+
+     Kitserv is licensed under the GNU Affero GPL v3. You are free to redis-
+     tribute and modify this code as you see fit, provided that you make the
+     source code freely available under these terms.

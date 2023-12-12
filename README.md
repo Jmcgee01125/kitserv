@@ -1,73 +1,43 @@
-TODO: write the full readme\
-TODO: project started June 2023 versioning is done by release date - 2023.7.22.0
+# Kitserv - Extensible Single-Instance File Server
 
-# FileKit
+Kitserv is a simple, single-instance file server with extensible API interface.
 
-FileKit is a simple cloud storage solution designed for flat file storage.
+The goal of Kitserv is to provide a simple, easily-deployable stateless file
+server that can be linked into a program to quickly host a web server, without
+sacrificing performance for ease of use. Kitserv can also be used to host any
+directory asa web server, without needing to point a full-fledged server at it.
 
-Many cloud storage solutions provide live editing, detailed sharing, comments,
-syncing, and other functionality. FileKit instead focuses on simplicity -
-cutting out these features results in a faster, easier to deploy system. In
-contrast to other cloud storage solutions, FileKit can be run as a single
-standalone process, without requiring a great deal of host system access.
-
-FileKit's features consist simply of the following:
-
-- Upload and download of single files
-- Multiple active users
-- View-only sharing
+Kitserv does not provide TLS. Use a reverse proxy or tunnel for TLS support.
 
 ## Usage
 
-**For security reasons, it is STRONGLY RECOMMENDED that any public FileKit
-instance be run behind a reverse proxy or tunnel to provide TLS support.**\
-FileKit does not provide in-flight encryption as part of its services.
+##### Simple Fully-Static File Server
 
-Run the `filekit` executable and pass options as necessary. -w and -d are
-required, denoting the web directory and data directory (respectively).
+Run `./kitserv`, passing arguments as necessary.
 
-- The web directory is the location where the frontend is stored. Request paths
-  are relative to this directory. /d/ and /api/ are reserved for api endpoints.
-- The data directory is the location where uploads and the database is stored.
-  It should be empty at first startup.
-- If your system has IPv6 dual binding enabled, you should also pass -6 to
-  disable direct IPv4 binding.
-- For information about other options, see `filekit -h`.
+##### API-Extended Server
 
-The server secret (for user authentication) is set via the FILEKIT_SECRET
-environment variable. Set this variable before starting. It will be unset during
-initialization. For example, `FILEKIT_SECRET=supa_secure ./filekit`
+Link libkitserv.a into your executable. Use the provided interface (kitserv.h)
+to connect your web application to Kitserv's API hooks.
+
+##### Documentation
+
+Documentation is contained in the `man` directory.
+
+For the fully-static server, see kitserv(1).
+
+For the libkitserv library, see kitserv(0) and associated functions in section 3
+manual pages.
 
 ## Building from Source
 
-To run `./install-dependencies.sh`, first install the following:
-
-- `autoconf`
-- `libtool`
-- `pkg-config`
-- `openssl` (e.g., `libssl-dev`)
-- `tcl`
-
-Next, run `./install-dependencies.sh` to get jansson, libjwt, and sqlite. You
-may also install these libraries separately.
-
-After this is finished, run the provided Makefile to build the FileKit backend.
-
-TODO: instructions for setting up the default frontend.
-
-## API
-
-FileKit uses the following backend API system.
-
-TODO: Note the API system that is used as the interface between the backend and
-frontend. This allows a different frontend to be swapped in if the client so
-chooses.
-
-Keep in mind that the frontend must be static, potentially using an SPA through
-fallback.
+Run `make`.
 
 ## License
 
-FileKit is licensed under the GNU Affero GPL v3. You are free to redistribute
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
 and modify this code as you see fit, provided that you make the source code
 freely available under these terms. For more information, see the LICENSE file.
+
+Kitserv does not reflect its own source code. If you do make modifications, you
+are responsible for making sure that the changes are accessible.
