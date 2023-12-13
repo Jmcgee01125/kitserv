@@ -11,27 +11,27 @@ Kitserv does not provide TLS. Use a reverse proxy or tunnel for TLS support.
 
 ## Usage
 
-##### Simple Fully-Static File Server
+### Simple Fully-Static File Server
 
-Run `./kitserv`, passing arguments as necessary.
+Run `bin/kitserv`, passing arguments as necessary.
 
-##### API-Extended Server
+### API-Extended Server
 
-Link libkitserv.a into your executable. Use the provided interface (kitserv.h)
-to connect your web application to Kitserv's API hooks.
+Link `lib/libkitserv.a` into your executable. Use the provided interface
+(`include/kitserv.h`) to connect your web application to Kitserv's API hooks.
 
-##### Documentation
+### Documentation
 
 Documentation is contained in the `man` directory.
 
-For the fully-static server, see kitserv(1).
+For the fully-static server, see `kitserv(1)`.
 
-For the libkitserv library, see kitserv(0) and associated functions in section 3
+For the libkitserv library, see `kitserv(0)` and associated functions in section 3
 manual pages.
 
 ## Building from Source
 
-Run `make`.
+Run `make`. This will build both the library and standalone executable.
 
 ## License
 
