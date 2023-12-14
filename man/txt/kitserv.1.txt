@@ -22,8 +22,8 @@ OPTIONS
 	     Port to run on.
 
      [-s slots]
-	     Number of connection slots in total.  Kitserv preallocates all
-	     slots, so expansion is not possible.  Note that clients may expe-
+	     Number of connection slots in total. Kitserv preallocates all
+	     slots, so expansion is not possible. Note that clients may expe-
 	     rience connection issues as the load nears its peak, though Kit-
 	     serv will do its best to serve every client it can.
 
@@ -31,12 +31,12 @@ OPTIONS
 	     Number of threads to use to serve clients.
 
      [-f fallback]
-	     File to serve when the requested path is not accessible.  This
-	     location is relative to webdir.
+	     File to serve when the requested path is not accessible. This lo-
+	     cation is relative to webdir.
 
      [-r root_fallback]
-	     File to serve when the requested path is /.  This location is
-	     relative to webdir.
+	     File to serve when the requested path is /. This location is rel-
+	     ative to webdir.
 
      [-4]    Bind IPv4 address only.
 
@@ -51,7 +51,7 @@ EXAMPLES
 
      Run an IPv4-only server with support for 10000 clients using 16 threads
      on the directory `./web`
-	   kitserv -w ./web -t 8 -s 10000 -4
+	   kitserv -w ./web -t 16 -s 10000 -4
 
      Run a server with fallbacks enabled on the directory `./web`
 	   kitserv -w ./web -f /200.html -r /index.html

@@ -1,4 +1,4 @@
-.Dd December 6, 2023
+.Dd December 13, 2023
 .Dt Kitserv 1
 .Nm Kitserv(1)
 .Nd Simple Fully-Static File Server
@@ -30,18 +30,18 @@ Path to directory that will be hosted.
 .It Op Fl p Ar port
 Port to run on.
 .It Op Fl s Ar slots
-Number of connection slots in total.
-Kitserv preallocates all slots, so expansion is not possible.
-Note that clients may experience connection issues as the load nears its peak,
-though Kitserv will do its best to serve every client it can.
+Number of connection slots in total. Kitserv preallocates all slots, so
+expansion is not possible. Note that clients may experience connection issues
+as the load nears its peak, though Kitserv will do its best to serve every
+client it can.
 .It Op Fl t Ar threads
 Number of threads to use to serve clients.
 .It Op Fl f Ar fallback
-File to serve when the requested path is not accessible.
-This location is relative to webdir.
+File to serve when the requested path is not accessible. This location is
+relative to webdir.
 .It Op Fl r Ar root_fallback
-File to serve when the requested path is /.
-This location is relative to webdir.
+File to serve when the requested path is /. This location is relative to
+webdir.
 .It Op Fl 4
 Bind IPv4 address only.
 .It Op Fl 6
@@ -55,7 +55,7 @@ Run a dual-bound server on the directory `./web`
 .Dl kitserv -w ./web -6
 .Pp
 Run an IPv4-only server with support for 10000 clients using 16 threads on the directory `./web`
-.Dl kitserv -w ./web -t 8 -s 10000 -4
+.Dl kitserv -w ./web -t 16 -s 10000 -4
 .Pp
 Run a server with fallbacks enabled on the directory `./web`
 .Dl kitserv -w ./web -f /200.html -r /index.html
