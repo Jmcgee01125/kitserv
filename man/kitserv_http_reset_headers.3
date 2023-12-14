@@ -1,6 +1,6 @@
-.Dd December 11, 2023
-.Dt kitserv_api_reset_body 3
-.Nm kitserv_api_reset_body(3)
+.Dd December 13, 2023
+.Dt kitserv_api_reset_headers 3
+.Nm kitserv_api_reset_headers(3)
 .Sh SYNOPSIS
 .Pp
 .Lb kitserv
@@ -8,13 +8,11 @@
 .In kitserv.h
 .Pp
 .Ft void
-.Fn kitserv_api_reset_body "struct kitserv_client*"
+.Fn kitserv_api_reset_headers "struct kitserv_client*"
 .Sh DESCRIPTION
 The
-.Sy kitserv_api_reset_body()
-function clears the response body buffer.
-.Pp
-Note: This does not affect range or file information.
+.Sy kitserv_api_reset_headers()
+function clears the headers of a response.
 .Sh COPYRIGHT
 .Pp
 Copyright (c) 2023 Jmcgee1125.

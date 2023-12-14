@@ -136,6 +136,11 @@ int kitserv_http_header_add_content_type_guess(struct kitserv_client*, const cha
 int kitserv_http_header_add_last_modified(struct kitserv_client*, time_t time);
 
 /**
+ * Clear out all currently-set headers.
+ */
+void kitserv_http_reset_headers(struct kitserv_client*);
+
+/**
  * Handle a static request for client using the given path and context.
  * Pass NULL to use the default context.
  * On error, returns -1 and sets client->ta.resp_status.

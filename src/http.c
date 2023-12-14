@@ -1146,6 +1146,11 @@ static inline void prepare_resp_start(struct kitserv_client* client)
                get_status_string(client->ta.resp_status));
 }
 
+void kitserv_http_reset_headers(struct kitserv_client* client)
+{
+    client->ta.resp_headers_len = 0;
+}
+
 /**
  * Wipe and add headers for a response on a given client
  */

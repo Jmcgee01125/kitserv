@@ -1,4 +1,4 @@
-kitserv_api_reset_body(3)
+kitserv_api_reset_headers(3)
 
 SYNOPSIS
      library "kitserv"
@@ -6,12 +6,11 @@ SYNOPSIS
      #include <kitserv.h>
 
      void
-     kitserv_api_reset_body(struct kitserv_client*);
+     kitserv_api_reset_headers(struct kitserv_client*);
 
 DESCRIPTION
-     The kitserv_api_reset_body() function clears the response body buffer.
-
-     Note: This does not affect range or file information.
+     The kitserv_api_reset_headers() function clears the headers of a re-
+     sponse.
 
 COPYRIGHT
      Copyright (c) 2023 Jmcgee1125.
