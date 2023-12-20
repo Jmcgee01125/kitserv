@@ -1,6 +1,6 @@
 # Kitserv - Extensible Single-Instance File Server
 
-Kitserv is a simple, single-instance file server with extensible API interface.
+Kitserv is a simple, single-instance file server with extensible API.
 
 The goal of Kitserv is to provide a simple, easily-deployable stateless file
 server that can be linked into a program to quickly host a web server, without

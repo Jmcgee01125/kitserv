@@ -116,5 +116,7 @@ int main(int argc, char* argv[])
 
     kitserv_server_start(&config);
 
+    printf("Kitserv shutting down.\n");
+
     return 0;
 }
