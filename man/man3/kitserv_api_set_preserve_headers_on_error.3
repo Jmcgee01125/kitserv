@@ -1,0 +1,82 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt KITSERV_API_SET_PRESERVE_HEADERS_ON_ERROR 3 LOCAL
+.Sh NAME
+.Nm kitserv_api_set_preserve_headers_on_error, \
+kitserv_api_set_preserve_body_on_error
+.Nd set whether or not to preserve response information on error
+.Sh LIBRARY
+.Lb libkitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft void
+.Fo kitserv_api_set_preserve_headers_on_error
+.Fa "struct kitserv_client*"
+.Fa "bool preserve_enabled"
+.Fc
+.Ft void
+.Fo kitserv_api_set_preserve_body_on_error
+.Fa "struct kitserv_client*"
+.Fa "bool preserve_enabled"
+.Fc
+.Sh DESCRIPTION
+The
+.Fn kitserv_api_set_preserve_headers_on_error
+function instructs Kitserv not to discard headers when returning an error
+response to the client.
+.Pp
+The
+.Fn kitserv_api_set_preserve_body_on_error
+function instructs Kitserv not to discard the body or headers when returning
+an error response to the client.
+.Pp
+By default, when an error response is generated, Kitserv wipes out both the
+headers and body of the response to create a canned response. However, if
+the endpoint so wishes, they may use these functions to override the response
+sent. For example, this could be used to include a custom warning message on
+a 403 response.
+.Pp
+Preserving the body implies preserving the headers, to facilitate setting
+the content-type header for the body that the endpoint has prepared. So, if
+preservation is enabled for the body, the preservation status of the headers
+is ignored entirely (they are always preserved).
+.Pp
+If only the headers are preserved, a content-type header will be added (to
+match the body being automatically generated). So, do not add this header in
+the endpoint as it will conflict with the Kitserv-added header. This is in
+addition to the headers already always added, see
+.Xr kitserv 0
+for more information.
+.Sh SEE ALSO
+.Xr kitserv 0 ,
+.Xr kitserv_http_header_add 3 ,
+.Xr kitserv_http_handle_static_path 3
+.Sh NOTES
+A separate "default preservation" system was considered, with these functions
+replaced by a single function that used an enumerated type to determine how
+much of the response should be preserved and a config entry for the default.
+This system was scrapped for internal implementation reasons.
+.Pp
+Firstly, such a system would need to understand more about the difference
+between internally-serviced requests and API requests, to know if the API
+defaults should apply or the internal defaults (discarding) should be
+used.
+.Pp
+Secondly, this system could cause some confusion for API endpoints making
+use of
+.Xr kitserv_http_handle_static_path 3 ,
+since this represents a control flow shared between the internal system and
+the API endpoint. Specifically, the confusion arises about whether or not
+the endpoint should preserve headers in this scenario (or if said function
+should manipulate preservation on its own).
+.Pp
+In light of this, Kitserv uses these two functions with the defaults being
+"don't preserve." Endpoints that wish to set their own defaults should call
+the function for their preferred preservation at the entry point of their
+handler.
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

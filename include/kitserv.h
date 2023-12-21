@@ -136,11 +136,6 @@ int kitserv_http_header_add_content_type_guess(struct kitserv_client*, const cha
 int kitserv_http_header_add_last_modified(struct kitserv_client*, time_t time);
 
 /**
- * Clear out all currently-set headers.
- */
-void kitserv_http_reset_headers(struct kitserv_client*);
-
-/**
  * Handle a static request for client using the given path and context.
  * Pass NULL to use the default context.
  * On error, returns -1 and sets client->ta.resp_status.
@@ -230,6 +225,11 @@ int kitserv_api_write_body(struct kitserv_client*, const char* buf, int buflen);
  * Return the number of bytes written, or -1 on error.
  */
 int kitserv_api_write_body_fmt(struct kitserv_client*, const char* fmt, ...);
+
+/**
+ * Clear out all currently-set headers.
+ */
+void kitserv_api_reset_headers(struct kitserv_client*);
 
 /**
  * Reset the response body to an empty buffer.

@@ -1,0 +1,57 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt KITSERV_API_SEND_FILE 3 LOCAL
+.Sh NAME
+.Nm kitserv_api_send_file
+.Nd send an opened file for a response
+.Sh LIBRARY
+.Lb kitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft int
+.Fo kitserv_api_send_file
+.Fa "struct kitserv_client*"
+.Fa "int fd"
+.Fa "off_t filesize"
+.Fc
+.Sh DESCRIPTION
+The
+.Fn kitserv_api_send_file
+function will store an open fd to be sent in the response. The
+.Fa filesize
+argument is taken as the size of the file, in bytes. The file will be closed
+after sending (or calling this function again), use
+.Xr dup 2
+prior to calling to avoid side effects if this fd is shared.
+.Pp
+By default, Kitserv will send the entire file. To send a subset, use
+.Xr kitserv_api_set_send_range 3 . No
+.Pp
+For a HEAD request, use the constant
+.Dv KITSERV_FD_HEAD . No Kitserv will not send the file body on a HEAD
+request anyway, but this constant allows the endpoint to avoid opening
+the file in the first place.
+.Pp
+Using this function will override sending the body buffer (set up
+.No using Xr kitserv_api_write_body 3 ) No \- to return to sending the body,
+.No pass Dv KITSERV_FD_DISABLE No as Fa fd . No The fa filesize No argument
+is ignored in this case.
+.Sh RETURN VALUE
+On success, this function returns 0. On failure, this function returns -1,
+.No setting Va errno . No
+.Sh ERRORS
+This function currently cannot fail. However, it may be possible for a future
+implementation to fail, and thus future-proof programs should account for
+this possibility.
+.Sh SEE ALSO
+.Xr dup 2 ,
+.Xr kitserv 0 ,
+.Xr kitserv_api_set_send_range 3 ,
+.Xr kitserv_api_write_body 3 ,
+.Xr kitserv_http_header_add 3
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

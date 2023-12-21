@@ -1,0 +1,64 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt KITSERV_API_WRITE_BODY 3 LOCAL
+.Sh NAME
+.Nm kitserv_api_write_body
+.Nd write text into the response body buffer
+.Sh LIBRARY
+.Lb kitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft int
+.Fo kitserv_api_write_body
+.Fa "struct kitserv_client*"
+.Fa "char* buf"
+.Fa "char* buflen"
+.Fc
+.Ft int
+.Fo kitserv_api_write_body_fmt
+.Fa "struct kitserv_client*"
+.Fa "const char* fmt"
+.Fa "..."
+.Fc
+.Sh DESCRIPTION
+The
+.Fn kitserv_api_write_body
+function writes
+.Fa buflen
+bytes from
+.Fa buf
+into the response body.
+.Pp
+The
+.Fn kitserv_api_write_body_fmt
+function writes a printf-style format string into the response body.
+.Pp
+Unless indicated otherwise, Kitserv will send the entire response body to the
+client. To send a subset, use
+.Xr kitserv_api_set_send_range 3 . No Note that Kitserv will always send until
+the end of the buffer, so setting the send range will only affect the
+start offset.
+.Pp
+Note that, if Kitserv has been indicated to send a file, that takes precedence
+over sending this body buffer. For more information, see
+.Xr kitserv_api_send_file 3 . No
+.Sh RETURN VALUE
+On success, these functions return the number of bytes written. On failure,
+they return -1, setting
+.Va errno . No
+.Sh ERRORS
+These functions shall fail if:
+.Bl -tag -width Ds
+.It Sy ENOMEM
+The response body buffer needed to expand, but space was not available.
+.El
+.Sh SEE ALSO
+.Xr kitserv 0 ,
+.Xr kitserv_api_send_file 3 ,
+.Xr kitserv_api_set_send_range 3
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

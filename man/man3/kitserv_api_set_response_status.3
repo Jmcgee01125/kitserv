@@ -1,0 +1,63 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt KITSERV_API_SET_RESPONSE_STATUS 3 LOCAL
+.Sh NAME
+.Nm kitserv_api_set_response_status
+.Nd set HTTP response status
+.Sh LIBRARY
+.Lb kitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft void
+.Fo kitserv_api_set_response_status
+.Fa "struct kitserv_client*"
+.Fa "enum kitserv_http_response_status"
+.Fc
+.Sh DESCRIPTION
+The
+.Fn kitserv_api_set_response_status
+function sets the given response status on the client.
+.Pp
+The supported statuses are as follows:
+.D1 Dv HTTP_X_RESP_STATUS_UNSET
+.D1 Dv HTTP_200_OK
+.D1 Dv HTTP_206_PARTIAL_CONTENT
+.D1 Dv HTTP_304_NOT_MODIFIED
+.D1 Dv HTTP_400_BAD_REQUEST
+.D1 Dv HTTP_403_PERMISSION_DENIED
+.D1 Dv HTTP_404_NOT_FOUND
+.D1 Dv HTTP_408_REQUEST_TIMEOUT
+.D1 Dv HTTP_413_CONTENT_TOO_LARGE
+.D1 Dv HTTP_414_URI_TOO_LONG
+.D1 Dv HTTP_416_RANGE_NOT_SATISFIABLE
+.D1 Dv HTTP_431_REQUEST_HEADER_FIELDS_TOO_LARGE
+.D1 Dv HTTP_500_INTERNAL_ERROR
+.D1 Dv HTTP_501_NOT_IMPLEMENTED
+.D1 Dv HTTP_503_SERVICE_UNAVAILABLE
+.D1 Dv HTTP_505_VERSION_NOT_SUPPORTED
+.D1 Dv HTTP_507_INSUFFICIENT_STORAGE
+.Pp
+Until the response status has been changed from its default value,
+.Dv HTTP_X_RESP_STATUS_UNSET , No Kitserv will continue to call the endpoint
+handler. Once it has been set, returning from the handler will trigger
+Kitserv to send the response.
+.Pp
+If the response status has been changed and the endpoint does not wish the
+response to be sent when returning (for example, by
+.Xr http_handle_static_path 3
+on error), this function may be used to revert the status to
+.Dv HTTP_X_RESP_STATUS_UNSET
+to prevent replying.
+.Pp
+.Dv HTTP_405_METHOD_NOT_ALLOWED
+is also supported, but is reserved for internal use. Endpoints should enforce
+method restrictions using the API tree.
+.Sh SEE ALSO
+.Xr kitserv 0 ,
+.Xr http_handle_static_path 3
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

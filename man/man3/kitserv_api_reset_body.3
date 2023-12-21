@@ -1,0 +1,32 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt KITSERV_API_RESET_BODY 3 LOCAL
+.Sh NAME
+.Nm kitserv_api_reset_body
+.Nd clear response body information
+.Sh LIBRARY
+.Lb kitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft void
+.Fn kitserv_api_reset_body "struct kitserv_client*"
+.Sh DESCRIPTION
+The
+.Fn kitserv_api_reset_body
+function clears the response body buffer if it was in use, returning to an
+empty response.
+.Pp
+This function does not affect range or file information. If a file body was
+previously prepared, it must be cleared with
+.Xr kitserv_api_send_file 3 . No
+.Sh SEE ALSO
+.Xr kitserv 0 ,
+.Xr kitserv_api_reset_headers 3 ,
+.Xr kitserv_api_send_file 3 ,
+.Xr kitserv_api_set_send_range 3
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.
