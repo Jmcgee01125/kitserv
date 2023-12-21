@@ -1,11 +1,17 @@
 NAME := kitserv
 
+KITSERV_LIBDIR ?= $(error KITSERV_LIBDIR not set: no library install directory)
+KITSERV_INCDIR ?= $(error KITSERV_INCDIR not set: no include install directory)
+KITSERV_BINDIR ?= $(error KITSERV_BINDIR not set: no binary install directory)
+KITSERV_MANDIR ?= $(error KITSERV_MANDIR not set: no manual page install directory)
+
 INCLUDE_DIR := include
 OBJ_DIR := obj
 BIN_DIR := bin
 LIB_DIR := lib
 SRC_DIR := src
 SRC_INCLUDE_DIR := $(SRC_DIR)/include
+MAN_DIR := man
 
 WARNINGS := -Wall -Wextra -Wmissing-prototypes -Winline -pedantic
 CFLAGS := -MMD -MP -O2 $(WARNINGS) -I$(INCLUDE_DIR) -I$(SRC_INCLUDE_DIR) -fpie -DNDEBUG
@@ -24,12 +30,12 @@ STANDALONE := $(BIN_DIR)/$(NAME)
 
 
 
-.PHONY:	all debug clean
+.PHONY:	all install debug clean
 
 all:	$(LIB) $(STANDALONE)
 
-debug: CFLAGS += -g -O0 -UNDEBUG
-debug: all
+debug:	CFLAGS += -g -O0 -UNDEBUG
+debug:	all
 
 -include $(DEPENDS) $(BIN_DEPENDS)
 
@@ -45,6 +51,16 @@ $(LIB):	$(OBJS) Makefile
 $(STANDALONE): $(BIN_OBJS) Makefile
 	@mkdir -p $(BIN_DIR)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(BIN_OBJS)
+
+install: all
+	@mkdir -p $(KITSERV_INCDIR)
+	@mkdir -p $(KITSERV_LIBDIR)
+	@mkdir -p $(KITSERV_BINDIR)
+	@mkdir -p $(KITSERV_MANDIR)
+	@cp $(INCLUDE_DIR)/* $(KITSERV_INCDIR)/
+	@cp $(STANDALONE) $(KITSERV_BINDIR)/
+	@cp $(LIB) $(KITSERV_LIBDIR)/
+	@cp -r $(MAN_DIR)/* $(KITSERV_MANDIR)/
 
 clean:
 	@$(RM) -f $(OBJS) $(BIN_OBJS) $(DEPENDS) $(BIN_DEPENDS) $(LIB) $(STANDALONE)
