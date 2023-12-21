@@ -146,6 +146,11 @@ int kitserv_api_write_body_fmt(struct kitserv_client* client, const char* fmt, .
     return client->resp_body.len - pre_sz;
 }
 
+void kitserv_api_reset_headers(struct kitserv_client* client)
+{
+    client->ta.resp_headers_len = 0;
+}
+
 void kitserv_api_reset_body(struct kitserv_client* client)
 {
     kitserv_buffer_reset(&client->resp_body, HTTP_BUFSZ);

@@ -1,0 +1,112 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt KITSERV_API_GET_REQUEST_RANGE 3 LOCAL
+.Sh NAME
+.Nm kitserv_api_get_request_range
+.Nd get request's content-range header value
+.Sh LIBRARY
+.Lb kitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft int
+.Fo kitserv_api_get_request_range
+.Fa "struct kitserv_client*"
+.Fa "off_t* start"
+.Fa "off_t* end"
+.Fc
+.Sh DESCRIPTION
+The
+.Fn kitserv_api_get_request_range
+function returns a client's range request in the out-parameters
+.Fa start
+and
+.Fa end . No Kitserv does not support multirange requests.
+.Pp
+A range request header is formatted as any of the following:
+.in +4n
+.Bl -tag -width Ds
+.It range: bytes=10-20
+.It range: bytes=10-
+.It range: bytes=-20
+.El
+.in -4n
+.Pp
+This function will place a value in
+.Fa start
+and
+.Fa end
+based on where that value is relative to the dash (-). If a value is not
+present (the second and third cases above), this function will instead set
+the corresponding 
+.Fa start
+or
+.Fa end
+to -1.
+.Pp
+The endpoint should take care to respect RFC 9110's description of range header
+semantics. In particular, when
+.Fa end
+is -1, the endpoint should set the end of the range to the length of the
+resource. When
+.Fa start
+is -1, the endpoint should set the range to be the last
+.Fa end
+bytes of the resource.
+.Sh RETURN VALUE
+On success, this function returns 0. On failure, this function returns -1 but
+does not set
+.Va errno . No
+.Sh EXAMPLES
+The following examples show a sample range header and the corresponding result
+of a call to
+.Sy kitserv_api_get_request_range() . No
+.in +4n
+.Bl -tag -width Ds
+.It range: bytes=10-20
+.Em start
+= 10, 
+.Em end
+= 20
+.It range: bytes=10-
+.Em start
+= 10, 
+.Em end
+= -1
+.It range: bytes=-20
+.Em start
+= -1, 
+.Em end
+= 20
+.It range: lines=10-20
+This function returns -1. (Invalid unit).
+.It [No range given]
+This function returns -1.
+.El
+.in -4n
+.Sh ERRORS
+This function shall fail if:
+.in +4n
+.Bl -tag -width Ds
+.It The request did not contain a range header.
+.It The range header was malformed.
+.El
+.in -4n
+.Pp
+In either case, the endpoint should treat the request as if the client did not
+make a range request.
+.Sh SEE ALSO
+.Xr kitserv 3 ,
+.Xr kitserv_api_get_request_content_length 3 , 
+.Xr kitserv_api_get_request_cookie 3 ,
+.Xr kitserv_api_get_request_disposition 3 ,
+.Xr kitserv_api_get_request_method 3 , 
+.Xr kitserv_api_get_request_mime_type 3 , 
+.Xr kitserv_api_get_request_modified_since_difference 3 , 
+.Xr kitserv_api_get_request_path 3 , 
+.Xr kitserv_api_get_request_query 3
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

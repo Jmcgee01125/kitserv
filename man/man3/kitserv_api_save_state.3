@@ -1,0 +1,34 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt KITSERV_API_SAVE_STATE 3 LOCAL
+.Sh NAME
+.Nm kitserv_api_save_state
+.Nd save endpoint processing state
+.Sh LIBRARY
+.Lb kitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft void
+.Fn kitserv_api_save_state "struct kitserv_client*" "void* state"
+.Sh DESCRIPTION
+The
+.Fn kitserv_api_save_state
+function saves the given
+.Fa state
+variable in the client information.
+.Pp
+This is the same state variable passed to the endpoint's handler function,
+.No which is Dv NULL No when first called. Using this function allows an
+endpoint to recognize that it has already done some processing for a
+client, e.g., when
+.Xr kitserv_api_read_payload 3
+had previously blocked.
+.Sh SEE ALSO
+.Xr kitserv 3 ,
+.Xr kitserv_api_read_payload 3
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

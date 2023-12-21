@@ -1131,7 +1131,11 @@ static const char* get_status_string(enum kitserv_http_response_status status)
             fprintf(stderr, "Status missing while getting status string\n");
             /* fallthrough */
         case HTTP_500_INTERNAL_ERROR:
+            return "500 Internal Server Error\r\n";
         default:
+            if (!kitserv_silent_mode) {
+                fprintf(stderr, "Unsupported status number: %d\n", status);
+            }
             return "500 Internal Server Error\r\n";
     }
 }
@@ -1311,28 +1315,29 @@ int kitserv_http_send_response(struct kitserv_client* client)
             sent_body = true;
         }
 
-        // send the buffers that got filled in
-        rc = writev(client->sockfd, sendbufs, sendbufs_idx);
-        if (rc < 0) {
-            return errno == EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
-        }
+        if (sent_start || sent_head || sent_body) {
+            // send the buffers that got filled in
+            rc = writev(client->sockfd, sendbufs, sendbufs_idx);
+            if (rc < 0) {
+                return errno == EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
+            }
 
-        // increment our send variables - take bytes out of rc, up to the space that's unsent
-        if (sent_start) {
-            client->ta.resp_start_pos += rc;
-            // set rc to the number of bytes not consumed here, or negative if we couldn't finish this segment
-            rc = client->ta.resp_start_pos - client->ta.resp_start_len;
+            // increment our send variables - take bytes out of rc, up to the space that's unsent
+            if (sent_start) {
+                client->ta.resp_start_pos += rc;
+                // set rc to the number of bytes not consumed here, or negative if we couldn't finish this segment
+                rc = client->ta.resp_start_pos - client->ta.resp_start_len;
+            }
+            if (sent_head && rc > 0) {
+                client->ta.resp_headers_pos += rc;
+                rc = client->ta.resp_headers_pos - client->ta.resp_headers_len;
+            }
+            if (sent_body && rc > 0) {
+                client->ta.resp_body_pos += rc;
+                rc = client->ta.resp_body_pos - client->resp_body.len;
+            }
+            assert(rc <= 0);  // should have either consumed all bytes or have more to send
         }
-        if (sent_head && rc > 0) {
-            client->ta.resp_headers_pos += rc;
-            rc = client->ta.resp_headers_pos - client->ta.resp_headers_len;
-        }
-        if (sent_body && rc > 0) {
-            client->ta.resp_body_pos += rc;
-            rc = client->ta.resp_body_pos - client->resp_body.len;
-        }
-        assert(rc <= 0);  // should have either consumed all bytes or have more to send
-
     } while (rc < 0);  // while rc is below 0, we didn't send everything we wanted to
 
     // have a file to send

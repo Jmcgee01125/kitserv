@@ -1,0 +1,66 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt HTTP_HANDLE_STATIC_PATH 3 LOCAL
+.Sh NAME
+.Nm http_handle_static_path
+.Nd serve a static file response
+.Sh LIBRARY
+.Lb kitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft int
+.Fo http_handle_static_path
+.Fa "struct kitserv_client*"
+.Fa "const char* path"
+.Fa "struct kitserv_request_context* ctx"
+.Fc
+.Sh DESCRIPTION
+The
+.Fc http_handle_static_path
+function serves a static file using the given path and context.
+It is recommended to finish API handling after calling this function, as the
+response will be fully set up.
+.Pp
+The path is served relative to the root directory of the context struct. The
+context may define fallback resources to be searched if the original path
+does not work. These paths are also relative to the context root. For more
+information about contexts, see
+.Xr kitserv_server_start 3 . No
+.Pp
+.Dv NULL
+may be passed as the context. In this case, Kitserv will use the default
+context that was passed during server startup. This can be useful for
+implementing authentication, as the request can be redirected through the API
+for authentication before returning to a standard Kitserv response.
+.Pp
+.Sh RETURN VALUE
+On success, this function returns 0. On failure, this function returns -1,
+.No setting Va errno No and a corresponding HTTP response status.
+.Sh ERRORS
+This function shall fail if:
+.Bl -tag -width Ds
+.It Sy HTTP 403 / EACCES
+The path was found, but the server did not have permissions to open it.
+.It Sy HTTP 405 / ENOTSUP
+The request method was not GET or HEAD.
+.It Sy HTTP 414 / ENAMETOOLONG
+The full path length generated was too long.
+.It Sy HTTP 500 / ENOMEM
+There was not enough space to store the headers for this response.
+Sets HTTP 500, as this is unexpected.
+.El
+.Pp
+This function may also fail for any reason that
+.Xr open 2
+may fail. In this case, HTTP 500 will be set.
+.Sh SEE ALSO
+.Xr kitserv 3 ,
+.Xr kitserv_server_start 3 ,
+.Xr kitserv_api_set_response_status 3 ,
+.Xr open 2
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

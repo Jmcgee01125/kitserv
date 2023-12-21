@@ -1,0 +1,28 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt KITSERV_API_RESET_HEADERS 3 LOCAL
+.Sh NAME
+.Nm kitserv_api_reset_headers
+.Nd clear previously set response headers
+.Sh LIBRARY
+.Lb libkitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft void
+.Fn kitserv_api_reset_headers "struct kitserv_client*"
+.Sh DESCRIPTION
+The
+.Fn kitserv_api_reset_headers
+function clears the headers of a response. This is useful when, for example,
+resetting a response to prepare for an error message when the intended headers
+did not fit.
+.Sh SEE ALSO
+.Xr kitserv 3 ,
+.Xr kitserv_api_reset_body 3
+.Sh COPYRIGHT
+.Pp
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

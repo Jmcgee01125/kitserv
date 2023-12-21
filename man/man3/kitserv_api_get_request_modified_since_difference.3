@@ -1,0 +1,60 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt KITSERV_API_GET_REQUEST_MODIFIED_SINCE_DIFFERENCE 3 LOCAL
+.Sh NAME
+.Nm kitserv_api_get_request_modified_since_difference
+.Nd get request's if-modified-since header time difference
+.Sh LIBRARY
+.Lb kitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft int
+.Fo kitserv_api_get_request_modified_since_difference
+.Fa "struct kitserv_client*"
+.Fa "double* difference"
+.Fa "time_t time"
+.Fc
+.Sh DESCRIPTION
+The
+.Fn kitserv_api_get_request_modified_since_difference
+function finds the difference between the requested if-modified-since time and
+the given time.
+.Pp
+The calculation performed is
+.Fa time
+minus the time given in the header. So, a negative
+.Fa difference
+indicates that the if-modified-since header has succeeded (that the resource
+was modified after
+.Fa time ) No
+.Sh RETURN VALUE
+On success, this function returns 0. On failure, this function returns -1 but
+does not set
+.Va errno . No
+.Sh ERRORS
+This function shall fail if:
+.in +4n
+.Bl -tag -width Ds
+.It The request did not contain an if-modified-since header.
+.It The if-modified-since header was malformed.
+.El
+.in -4n
+.Pp
+In either case, the endpoint should treat the request as if the client did not
+make an if-modified-since request.
+.Sh SEE ALSO
+.Xr kitserv 3 ,
+.Xr kitserv_api_get_request_content_length 3 , 
+.Xr kitserv_api_get_request_cookie 3 ,
+.Xr kitserv_api_get_request_disposition 3 ,
+.Xr kitserv_api_get_request_method 3 , 
+.Xr kitserv_api_get_request_mime_type 3 , 
+.Xr kitserv_api_get_request_path 3 , 
+.Xr kitserv_api_get_request_query 3 , 
+.Xr kitserv_api_get_request_range 3
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

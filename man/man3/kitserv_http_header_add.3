@@ -1,0 +1,84 @@
+.Dd December 21, 2023
+.Os LOCAL
+.Dt KITSERV_HTTP_HEADER_ADD 3 LOCAL
+.Sh NAME
+.Nm kitserv_http_header_add
+.Nd add formatted header to response
+.Sh LIBRARY
+.Lb kitserv
+.Sh SYNOPSIS
+.In kitserv.h
+.Ft int
+.Fo kitserv_http_header_add
+.Fa "struct kitserv_client*"
+.Fa "const char* key"
+.Fa "const char* fmt"
+.Fc
+.Ft int
+.Fo kitserv_http_header_add_content_type
+.Fa "struct kitserv_client*"
+.Fa "const char* mime"
+.Fc
+.Ft int
+.Fo kitserv_http_header_add_content_type_guess
+.Fa "struct kitserv_client*"
+.Fa "const char* extension"
+.Fc
+.Ft int
+.Fo kitserv_http_header_add_last_modified
+.Fa "struct kitserv_client*"
+.Fa "time_t time"
+.Fc
+.Sh DESCRIPTION
+The
+.Fn kitserv_http_header_add*
+family of functions add formatted headers to the current response.
+.Pp
+The
+.Fn kitserv_http_header_add
+function will append a printf-style format string to the headers, using the
+given key as the name of the header. This is the most general header append
+function. Do not include the key in the format string.
+.Pp
+The
+.Fn kitserv_http_header_add_content_type
+function will append a content-type header to the response, using the given
+.Fa mime
+argument as the value string. Do not forget to set this header in responses.
+.Pp
+The
+.Fn kitserv_http_header_add_content_type_guess
+function will append a content-type header to the response in the same
+manner as
+.Fn kitserv_http_header_add_content_type , No but will guess the mime type
+to use based on the extension given. The extension should include the leading
+period, e.g., ".txt". If the extension is not recognized by Kitserv, a type of
+"application/octet-stream" is used instead. For this reason, it is recommended
+to use
+.Fn kitserv_http_header_add_content_type
+instead, where possible.
+.Pp
+The
+.Fn kitserv_http_header_add_last_modified
+function will append a last-modified header to the response. This time will
+be formatted according to RFC 9110.
+.Sh RETURN VALUE
+On success, these functions return 0. On failure, they return -1, setting
+.Va errno No and a corresponding HTTP response status.
+.Sh ERRORS
+These functions shall fail if:
+.Bl -tag -width Ds
+.It Sy HTTP 507 / ENOMEM
+There is not enough space in the header buffer to store this header.
+The response status will be set to HTTP 507.
+.El
+.Sh SEE ALSO
+.Xr kitserv 3 ,
+.Xr kitserv_api_preserve_headers_on_error 3 ,
+.Xr kitserv_api_reset_headers 3
+.Sh COPYRIGHT
+Copyright (c) 2023 Jmcgee1125.
+.Pp
+Kitserv is licensed under the GNU Affero GPL v3. You are free to redistribute
+and modify this code as you see fit, provided that you make the source code
+freely available under these terms.

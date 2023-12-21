@@ -227,6 +227,11 @@ int kitserv_api_write_body(struct kitserv_client*, const char* buf, int buflen);
 int kitserv_api_write_body_fmt(struct kitserv_client*, const char* fmt, ...);
 
 /**
+ * Clear out all currently-set headers.
+ */
+void kitserv_api_reset_headers(struct kitserv_client*);
+
+/**
  * Reset the response body to an empty buffer.
  */
 void kitserv_api_reset_body(struct kitserv_client*);
