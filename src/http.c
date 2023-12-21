@@ -1131,6 +1131,7 @@ static const char* get_status_string(enum kitserv_http_response_status status)
             fprintf(stderr, "Status missing while getting status string\n");
             /* fallthrough */
         case HTTP_500_INTERNAL_ERROR:
+            return "500 Internal Server Error\r\n";
         default:
             if (!kitserv_silent_mode) {
                 fprintf(stderr, "Unsupported status number: %d\n", status);
