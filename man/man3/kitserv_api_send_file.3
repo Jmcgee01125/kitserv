@@ -5,7 +5,7 @@
 .Nm kitserv_api_send_file
 .Nd send an opened file for a response
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft int
@@ -25,7 +25,7 @@ after sending (or calling this function again), use
 prior to calling to avoid side effects if this fd is shared.
 .Pp
 By default, Kitserv will send the entire file. To send a subset, use
-.Xr kitserv_api_set_send_range 3 . No
+.Xr kitserv_api_set_send_range 3 . No \&
 .Pp
 For a HEAD request, use the constant
 .Dv KITSERV_FD_HEAD . No Kitserv will not send the file body on a HEAD
@@ -38,7 +38,7 @@ Using this function will override sending the body buffer (set up
 is ignored in this case.
 .Sh RETURN VALUE
 On success, this function returns 0. On failure, this function returns -1,
-.No setting Va errno . No
+.No setting Va errno . No \&
 .Sh ERRORS
 This function currently cannot fail. However, it may be possible for a future
 implementation to fail, and thus future-proof programs should account for

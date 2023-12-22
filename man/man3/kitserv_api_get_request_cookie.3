@@ -6,7 +6,7 @@
 kitserv_api_get_request_cookie_n
 .Nd get a specific cookie from a request
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft const char*
@@ -44,7 +44,7 @@ On success, these functions return a pointer to a null-terminated cookie value
 string or
 .Dv NULL
 if no cookie with that key exists. On failure, they return
-.Dv NULL , No setting Va errno . No
+.Dv NULL , No setting Va errno . No \&
 .Sh ERRORS
 These functions shall fail if:
 .Bl -tag -width Ds

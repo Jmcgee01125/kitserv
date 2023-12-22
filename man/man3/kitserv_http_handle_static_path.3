@@ -5,7 +5,7 @@
 .Nm http_handle_static_path
 .Nd serve a static file response
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft int
@@ -16,7 +16,7 @@
 .Fc
 .Sh DESCRIPTION
 The
-.Fc http_handle_static_path
+.Fn http_handle_static_path
 function serves a static file using the given path and context.
 It is recommended to finish API handling after calling this function, as the
 response will be fully set up.
@@ -25,7 +25,7 @@ The path is served relative to the root directory of the context struct. The
 context may define fallback resources to be searched if the original path
 does not work. These paths are also relative to the context root. For more
 information about contexts, see
-.Xr kitserv_server_start 3 . No
+.Xr kitserv_server_start 3 . No \&
 .Pp
 .Dv NULL
 may be passed as the context. In this case, Kitserv will use the default

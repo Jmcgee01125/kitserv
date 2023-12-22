@@ -5,7 +5,7 @@
 .Nm kitserv_api_set_send_range
 .Nd set the response range to send from
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft int
@@ -29,11 +29,11 @@ It is the endpoint's responsibility to ensure that
 does not exceed the length of the file being sent.
 .Pp
 This function does not set the content-range header on the response. Use
-.Xr kitserv_http_header_add 3 . No
+.Xr kitserv_http_header_add 3 . No \&
 .Sh RETURN VALUE
 On success, this function returns 0. On failure, this function returns -1,
 setting
-.Va errno . No
+.Va errno . No \&
 .Sh ERRORS
 These functions shall fail if:
 .Bl -tag -width Ds

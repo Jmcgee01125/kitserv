@@ -5,7 +5,7 @@
 .Nm kitserv_api_get_request_query
 .Nd get request's query string
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft const char*
@@ -16,7 +16,7 @@ The
 function returns a pointer to a null-terminated string for the client's
 request query. If the client did not put a query in the request, this
 function will return
-.Dv NULL . No
+.Dv NULL . No \&
 .Pp
 The query string returned is unparsed, but the leading ? is removed. So, this
 function returns (on success) a pointer to an &-delimited string of the

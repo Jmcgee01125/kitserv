@@ -5,7 +5,7 @@
 .Nm kitserv_api_write_body
 .Nd write text into the response body buffer
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft int
@@ -41,11 +41,11 @@ start offset.
 .Pp
 Note that, if Kitserv has been indicated to send a file, that takes precedence
 over sending this body buffer. For more information, see
-.Xr kitserv_api_send_file 3 . No
+.Xr kitserv_api_send_file 3 . No \&
 .Sh RETURN VALUE
 On success, these functions return the number of bytes written. On failure,
 they return -1, setting
-.Va errno . No
+.Va errno . No \&
 .Sh ERRORS
 These functions shall fail if:
 .Bl -tag -width Ds
