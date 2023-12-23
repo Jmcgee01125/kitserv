@@ -1,51 +1,71 @@
 #!/bin/sh
 #
-# Install Kitserv locally.
-# Change these values to reflect your desired install location.
-# They may also be overridden by same-named environment variables
+# Kitserv installation script.
 #
+# Change these values to reflect your desired install location.
+# They may also be overridden by same-named environment variables.
 # KITSERV_INCDIR - include directory (kitserv.h)
 # KITSERV_LIBDIR - library directory (kitserv.a)
-# KITSERV_BINDIR - standalone server biary directory
+# KITSERV_BINDIR - standalone server binary directory
 # KITSERV_MANDIR - man pages directory
+#
+# If PREFIX is defined, then Kitserv will be installed as follows:
+# PREFIX/include - kitserv.h
+# PREFIX/lib     - kitserv.a
+# PREFIX/bin     - standalone server binary
+# PREFIX/man     - man pages
+# The prior environment variables may still be used as overrides.
+# Additionally, PREFIX will suppress the confirmation prompt.
 
 if [ -z "${KITSERV_INCDIR}" ]; then
-    KITSERV_INCDIR=~/.local/lib/
-    echo Using default include directory: ${KITSERV_INCDIR}
-else
-    echo Using include directory: ${KITSERV_INCDIR}
+    if [ -z "${PREFIX}" ]; then
+        KITSERV_INCDIR=~/.local/lib/
+    else
+        KITSERV_INCDIR=${PREFIX}/include
+    fi
 fi
 if [ -z "${KITSERV_LIBDIR}" ]; then
-    KITSERV_LIBDIR=~/.local/lib/
-    echo Using default library directory: ${KITSERV_LIBDIR}
-else
-    echo Using library directory: ${KITSERV_LIBDIR}
+    if [ -z "${PREFIX}" ]; then
+        KITSERV_LIBDIR=~/.local/lib/
+    else
+        KITSERV_LIBDIR=${PREFIX}/lib
+    fi
 fi
 if [ -z "${KITSERV_BINDIR}" ]; then
-    KITSERV_BINDIR=~/.local/bin/
-    echo Using default binary directory: ${KITSERV_BINDIR}
-else
-    echo Using binary directory: ${KITSERV_BINDIR}
+    if [ -z "${PREFIX}" ]; then
+        KITSERV_BINDIR=~/.local/bin/
+    else
+        KITSERV_BINDIR=${PREFIX}/bin
+    fi
 fi
 if [ -z "${KITSERV_MANDIR}" ]; then
-    KITSERV_MANDIR=~/.local/share/man/
-    echo Using default man page directory: ${KITSERV_MANDIR}
-else
-    echo Using man page directory: ${KITSERV_MANDIR}
+    if [ -z "${PREFIX}" ]; then
+        KITSERV_MANDIR=~/.local/share/man/
+    else
+        KITSERV_MANDIR=${PREFIX}/man
+    fi
 fi
+
+echo Using include directory: ${KITSERV_INCDIR}
+echo Using library directory: ${KITSERV_LIBDIR}
+echo Using binary directory: ${KITSERV_BINDIR}
+echo Using man page directory: ${KITSERV_MANDIR}
 
 export KITSERV_INCDIR
 export KITSERV_LIBDIR
 export KITSERV_BINDIR
 export KITSERV_MANDIR
 
-echo
-while true; do
-    read -p "Continue with install? [Y/N] " yn
-    case $yn in
-        [Yy]* ) make install; break;;
-        [Nn]* ) exit;;
-        * ) ;;
-    esac
-done
-
+if [ -z "${PREFIX}" ]; then
+    echo
+    while true; do
+        read -p "Continue with install? [Y/N] " yn
+        case $yn in
+            [Yy]* ) make install; break;;
+            [Nn]* ) exit;;
+            * ) ;;
+        esac
+    done
+else
+    make install
+fi
