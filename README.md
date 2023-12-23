@@ -26,12 +26,15 @@ Documentation is contained in the `man` directory.
 
 For the fully-static server, see `kitserv(1)`.
 
-For the libkitserv library, see `kitserv(3)` and associated functions in
-section 3 manual pages.
+For the libkitserv library, see `kitserv(3)` and associated functions in section
+3 manual pages.
 
 ## Building from Source
 
 Run `make`. This will build both the library and standalone executable.
+
+Use `make install` or `./install.sh` to install the library. Use the environment
+variables described in `install.sh` to customize the installation directory.
 
 ## License
 
