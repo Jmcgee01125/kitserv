@@ -5,13 +5,13 @@
 # Change these values to reflect your desired install location.
 # They may also be overridden by same-named environment variables.
 # KITSERV_INCDIR - include directory (kitserv.h)
-# KITSERV_LIBDIR - library directory (kitserv.a)
+# KITSERV_LIBDIR - library directory (libkitserv.a)
 # KITSERV_BINDIR - standalone server binary directory
 # KITSERV_MANDIR - man pages directory
 #
 # If PREFIX is defined, then Kitserv will be installed as follows:
 # PREFIX/include - kitserv.h
-# PREFIX/lib     - kitserv.a
+# PREFIX/lib     - libkitserv.a
 # PREFIX/bin     - standalone server binary
 # PREFIX/man     - man pages
 # The prior environment variables may still be used as overrides.
