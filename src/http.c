@@ -1286,7 +1286,7 @@ error_response:
 
 int kitserv_http_send_response(struct kitserv_client* client)
 {
-    ssize_t rc;
+    ssize_t rc = 0;
     struct iovec sendbufs[3];
     int sendbufs_idx;
     bool sent_start, sent_head, sent_body;
