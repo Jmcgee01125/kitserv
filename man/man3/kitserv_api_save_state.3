@@ -1,4 +1,4 @@
-.Dd December 21, 2023
+.Dd December 23, 2023
 .Os LOCAL
 .Dt KITSERV_API_SAVE_STATE 3 LOCAL
 .Sh NAME
@@ -20,7 +20,7 @@ variable in the client information.
 This is the same state variable passed to the endpoint's handler function,
 .No which is Dv NULL No when first called. Using this function allows an
 endpoint to recognize that it has already done some processing for a
-client, e.g., when
+client; for example, when
 .Xr kitserv_api_read_payload 3
 had previously blocked.
 .Sh SEE ALSO

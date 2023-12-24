@@ -1,4 +1,4 @@
-.Dd December 21, 2023
+.Dd December 23, 2023
 .Os LOCAL
 .Dt KITSERV_API_WRITE_BODY 3 LOCAL
 .Sh NAME
@@ -11,8 +11,8 @@
 .Ft int
 .Fo kitserv_api_write_body
 .Fa "struct kitserv_client*"
-.Fa "char* buf"
-.Fa "char* buflen"
+.Fa "const char* buf"
+.Fa "int buflen"
 .Fc
 .Ft int
 .Fo kitserv_api_write_body_fmt
@@ -33,7 +33,7 @@ The
 .Fn kitserv_api_write_body_fmt
 function writes a printf-style format string into the response body.
 .Pp
-Unless indicated otherwise, Kitserv will send the entire response body to the
+Unless otherwise indicated, Kitserv will send the entire response body to the
 client. To send a subset, use
 .Xr kitserv_api_set_send_range 3 . No Note that Kitserv will always send until
 the end of the buffer, so setting the send range will only affect the

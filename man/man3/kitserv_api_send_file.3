@@ -1,9 +1,9 @@
-.Dd December 21, 2023
+.Dd December 23, 2023
 .Os LOCAL
 .Dt KITSERV_API_SEND_FILE 3 LOCAL
 .Sh NAME
 .Nm kitserv_api_send_file
-.Nd send an opened file for a response
+.Nd send an opened file in a response
 .Sh LIBRARY
 .Lb libkitserv
 .Sh SYNOPSIS
@@ -25,7 +25,7 @@ after sending (or calling this function again), use
 prior to calling to avoid side effects if this fd is shared.
 .Pp
 By default, Kitserv will send the entire file. To send a subset, use
-.Xr kitserv_api_set_send_range 3 . No \&
+.Xr kitserv_api_set_send_range 3 Em after No calling this function.
 .Pp
 For a HEAD request, use the constant
 .Dv KITSERV_FD_HEAD . No Kitserv will not send the file body on a HEAD
@@ -34,7 +34,7 @@ the file in the first place.
 .Pp
 Using this function will override sending the body buffer (set up
 .No using Xr kitserv_api_write_body 3 ) No \- to return to sending the body,
-.No pass Dv KITSERV_FD_DISABLE No as Fa fd . No The fa filesize No argument
+.No pass Dv KITSERV_FD_DISABLE No as Fa fd . No The Fa filesize No argument
 is ignored in this case.
 .Sh RETURN VALUE
 On success, this function returns 0. On failure, this function returns -1,
