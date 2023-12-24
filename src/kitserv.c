@@ -218,6 +218,27 @@ static inline int score_worker(struct worker* worker)
     return score;
 }
 
+/**
+ * Choose a worker to serve a new client
+ */
+static inline struct worker* select_client_worker(struct accepter* self)
+{
+    struct worker* best_worker;
+    int best_score = -1;
+    int curr_score, i;
+
+    best_worker = NULL;
+    best_score = -1;
+    for (i = 0; i < self->num_workers; i++) {
+        curr_score = score_worker(&self->workers_list[i]);
+        if (curr_score > best_score) {
+            best_worker = &self->workers_list[i];
+            best_score = curr_score;
+        }
+    }
+    return best_worker;
+}
+
 static void* client_worker(void* data)
 {
     struct worker* self = (struct worker*)data;
@@ -260,8 +281,8 @@ static void* accept_worker(void* data)
 {
     struct accepter* self = (struct accepter*)data;
     struct connection* new_conn;
-    struct worker* best_worker;
-    int sockfd, curr_score, best_score, i;
+    struct worker* victim_worker;
+    int sockfd;
 
     pthread_barrier_wait(&startup_barrier);
 
@@ -274,19 +295,10 @@ static void* accept_worker(void* data)
             continue;
         }
 
-        // look through all workers to pick best one for this new connection
-        best_worker = NULL;
-        best_score = -1;
-        for (i = 0; i < self->num_workers; i++) {
-            curr_score = score_worker(&self->workers_list[i]);
-            if (curr_score > best_score) {
-                best_worker = &self->workers_list[i];
-                best_score = curr_score;
-            }
-        }
+        victim_worker = select_client_worker(self);
 
         // give the new connection to that worker
-        new_conn = connection_accept(&best_worker->conn_container, sockfd);
+        new_conn = connection_accept(&victim_worker->conn_container, sockfd);
         if (!new_conn) {
             if (!kitserv_silent_mode) {
                 fprintf(stderr, "Target worker has no free slots!\n");
@@ -294,7 +306,7 @@ static void* accept_worker(void* data)
             kitserv_socket_close(sockfd);
             // TODO: when this happens, we should tell workers to close extranneous connections (e.g. DoS prevention)
         } else {
-            kitserv_queue_add(best_worker->queuefd, sockfd, new_conn, QUEUE_IN | QUEUE_OUT, false);
+            kitserv_queue_add(victim_worker->queuefd, sockfd, new_conn, QUEUE_IN | QUEUE_OUT, false);
         }
     }
 

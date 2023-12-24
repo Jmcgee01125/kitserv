@@ -1,11 +1,14 @@
-.Dd December 21, 2023
+.Dd December 23, 2023
 .Os LOCAL
 .Dt KITSERV_HTTP_HEADER_ADD 3 LOCAL
 .Sh NAME
-.Nm kitserv_http_header_add
+.Nm kitserv_http_header_add, \
+kitserv_http_header_add_content_type, \
+kitserv_http_header_add_content_type_guess, \
+kitserv_http_header_add_last_modified
 .Nd add formatted header to response
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft int
@@ -52,9 +55,9 @@ function will append a content-type header to the response in the same
 manner as
 .Fn kitserv_http_header_add_content_type , No but will guess the mime type
 to use based on the extension given. The extension should include the leading
-period, e.g., ".txt". If the extension is not recognized by Kitserv, a type of
-"application/octet-stream" is used instead. For this reason, it is recommended
-to use
+period, for example, ".txt". If the extension is not recognized by Kitserv, a
+type of "application/octet-stream" is used instead. For this reason, it is
+recommended to use
 .Fn kitserv_http_header_add_content_type
 instead, where possible.
 .Pp
@@ -70,7 +73,6 @@ These functions shall fail if:
 .Bl -tag -width Ds
 .It Sy HTTP 507 / ENOMEM
 There is not enough space in the header buffer to store this header.
-The response status will be set to HTTP 507.
 .El
 .Sh SEE ALSO
 .Xr kitserv 3 ,

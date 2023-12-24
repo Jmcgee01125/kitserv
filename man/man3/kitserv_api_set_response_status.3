@@ -1,11 +1,11 @@
-.Dd December 21, 2023
+.Dd December 23, 2023
 .Os LOCAL
 .Dt KITSERV_API_SET_RESPONSE_STATUS 3 LOCAL
 .Sh NAME
 .Nm kitserv_api_set_response_status
 .Nd set HTTP response status
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft void
@@ -20,6 +20,7 @@ function sets the given response status on the client.
 .Pp
 The supported statuses are as follows:
 .D1 Dv HTTP_X_RESP_STATUS_UNSET
+.D1 Dv HTTP_X_HANGUP
 .D1 Dv HTTP_200_OK
 .D1 Dv HTTP_206_PARTIAL_CONTENT
 .D1 Dv HTTP_304_NOT_MODIFIED
@@ -42,8 +43,8 @@ Until the response status has been changed from its default value,
 handler. Once it has been set, returning from the handler will trigger
 Kitserv to send the response.
 .Pp
-If the response status has been changed and the endpoint does not wish the
-response to be sent when returning (for example, by
+If the response status has been changed and the endpoint does noy yet wish
+to send the response (for example, by
 .Xr http_handle_static_path 3
 on error), this function may be used to revert the status to
 .Dv HTTP_X_RESP_STATUS_UNSET

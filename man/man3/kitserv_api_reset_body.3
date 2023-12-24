@@ -5,7 +5,7 @@
 .Nm kitserv_api_reset_body
 .Nd clear response body information
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft void
@@ -18,7 +18,7 @@ empty response.
 .Pp
 This function does not affect range or file information. If a file body was
 previously prepared, it must be cleared with
-.Xr kitserv_api_send_file 3 . No
+.Xr kitserv_api_send_file 3 . No \&
 .Sh SEE ALSO
 .Xr kitserv 3 ,
 .Xr kitserv_api_reset_headers 3 ,

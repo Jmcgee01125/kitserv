@@ -1,11 +1,11 @@
-.Dd December 21, 2023
+.Dd December 23, 2023
 .Os LOCAL
 .Dt KITSERV_API_GET_REQUEST_PATH 3 LOCAL
 .Sh NAME
 .Nm kitserv_api_get_request_path
 .Nd get request's URL path
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft const char*
@@ -14,7 +14,7 @@
 The
 .Fn kitserv_api_get_request_path
 function returns a pointer to a null-terminated string for the client's
-request path.
+request path. This path does not include the query string.
 .Sh SEE ALSO
 .Xr kitserv 3 ,
 .Xr kitserv_api_get_request_content_length 3 , 

@@ -5,7 +5,7 @@
 .Nm kitserv_api_get_request_range
 .Nd get request's content-range header value
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft int
@@ -55,11 +55,11 @@ bytes of the resource.
 .Sh RETURN VALUE
 On success, this function returns 0. On failure, this function returns -1 but
 does not set
-.Va errno . No
+.Va errno . No \&
 .Sh EXAMPLES
 The following examples show a sample range header and the corresponding result
 of a call to
-.Sy kitserv_api_get_request_range() . No
+.Sy kitserv_api_get_request_range() . No \&
 .in +4n
 .Bl -tag -width Ds
 .It range: bytes=10-20

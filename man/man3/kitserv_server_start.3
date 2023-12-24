@@ -1,11 +1,11 @@
-.Dd December 21, 2023
+.Dd December 23, 2023
 .Os LOCAL
 .Dt KITSERV_SERVER_START 3 LOCAL
 .Sh NAME
 .Nm kitserv_server_start
 .Nd start a Kitserv server
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Bd -literal
@@ -79,7 +79,7 @@ IPv4 binding.
 .It Fa bool silent_mode
 Disable non-catastrophic error prints and logging. Not all printouts are
 removed, only logging and most recoverable errors.
-.It Fa struct kitserv_request_context* http_root_context;
+.It Fa struct kitserv_request_context* http_root_context
 Default web context to serve from.
 .It Fa struct kitserv_api_tree* api_tree
 API endpoint tree to serve API requests into. Use NULL for this field
@@ -88,7 +88,7 @@ to disable the API entirely.
 .El
 .Pp
 .Vt struct kitserv_request_context
-Defines a static file server context. This includes the main web
+defines a static file server context. This includes the main web
 directory and fallback handling. The entries of that struct are
 defined as follows:
 .in +4n
@@ -146,19 +146,13 @@ are defined as follows:
 .in +4n
 .Bl -tag -width Ds
 .It Fa char* prefix
-Prefix of this subtree. Includes no / characters.
+Prefix of this endpoint. Includes no / characters.
 .It Fa int prefix_length
-Length of this subtree's prefix.
+Length of this endpoint's prefix.
 .It Fa enum kitserv_http_method method
-HTTP method accepted by this endpoint.
-.Dv HTTP_GET
-and
-.Dv HTTP_HEAD
-are both serviced by endpoints declared as
-.Dv HTTP_GET
-do not use
-.Dv HTTP_HEAD
-directly here.
+.No HTTP method accepted by this endpoint. Dv HTTP_GET No and Dv HTTP_HEAD
+.No are both serviced by endpoints declared as Dv HTTP_GET . No \&Do not use
+.Dv HTTP_HEAD No directly here.
 .It Fa kitserv_api_handler_t handler
 Handler function to do API parsing. This function will be repeatedly called
 until the response status is set.

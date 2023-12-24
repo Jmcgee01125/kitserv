@@ -1,4 +1,4 @@
-.Dd December 21, 2023
+.Dd December 23, 2023
 .Os LOCAL
 .Dt KITSERV 3 LOCAL
 .Sh NAME
@@ -44,7 +44,7 @@ The following functions are defined:
 .D1 Vt int Fn kitserv_http_header_add_content_type_guess "struct kitserv_client*" "const char* extension"
 .D1 Vt int Fn kitserv_http_header_add_last_modified "struct kitserv_client*" "time_t time"
 .D1 Vt int Fn kitserv_http_handle_static_path "struct kitserv_client* client" "const char* path" "struct kitserv_request_context* ctx"
-.D1 Vt enum Fn kitserv_http_method kitserv_api_get_request_method "struct kitserv_client*"
+.D1 Vt enum kitserv_http_method Fn kitserv_api_get_request_method "struct kitserv_client*"
 .D1 Vt const char* Fn kitserv_api_get_request_path "struct kitserv_client*"
 .D1 Vt const char* Fn kitserv_api_get_request_query "struct kitserv_client*"
 .D1 Vt off_t Fn kitserv_api_get_request_content_length "struct kitserv_client*"

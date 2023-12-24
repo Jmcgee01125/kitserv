@@ -5,7 +5,7 @@
 .Nm kitserv_api_read_payload
 .Nd read data from the client
 .Sh LIBRARY
-.Lb kitserv
+.Lb libkitserv
 .Sh SYNOPSIS
 .In kitserv.h
 .Ft int
@@ -41,12 +41,12 @@ to keep track of information between calls.
 If the read suffers an error besides blocking, Kitserv will hang up on the
 client. Take this opportunity to close any resources in use by the endpoint
 before returning. Detect this by checking
-.Va errno . No
+.Va errno . No \&
 .Sh RETURN VALUE
 On success, this function returns the actual number of bytes
 .No read ( Fa nbytes No or fewer). On failure, this function returns -1,
 .No setting Va errno No and possibly setting the response status to
-.Dv HTTP_X_HANGUP . No
+.Dv HTTP_X_HANGUP . No \&
 .Sh ERRORS
 This function shall fail if:
 .Bl -tag -width Ds
