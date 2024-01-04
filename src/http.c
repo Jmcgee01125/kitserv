@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #ifdef __linux__
+#define KITSERV_HAVE_SENDFILE
 #include <sys/sendfile.h>
 #endif
 
@@ -1284,6 +1285,51 @@ error_response:
     goto success;
 }
 
+#ifndef KITSERV_HAVE_SENDFILE
+/**
+ * Emulation of Linux sendfile sematics. However, offset MUST NOT be NULL.
+ */
+static inline ssize_t sendfile_emulation(int out_fd, int in_fd, off_t* offset, size_t count)
+{
+    const int SFE_BUFSZ = 4096;  // small, but (A) stack allocated and (B) need to re-read if EAGAIN is hit on send
+    char buf[SFE_BUFSZ];
+    ssize_t remaining, read, sent;
+
+    // sendfile only transfers at most 0x7ffff000 bytes (which helps us fit in the ssize_t return type)
+    assert(0x7ffff000 <= (size_t)-1);
+    if (count > 0x7ffff000) {
+        count = 0x7ffff000;
+    }
+    remaining = count;
+
+    do {
+        read = pread(in_fd, buf, SFE_BUFSZ < remaining ? SFE_BUFSZ : remaining, *offset);
+        if (read < 0) {
+            goto err;
+        }
+
+        sent = 0;
+        do {
+            sent = write(out_fd, buf, read);
+            if (sent < 0) {
+                goto err;
+            }
+        } while (sent < read);
+
+        remaining -= sent;
+        *offset += sent;
+    } while (remaining > 0);
+
+    return count - remaining;
+
+err:
+    if (count - remaining > 0) {
+        return count - remaining;
+    }
+    return -1;
+}
+#endif
+
 int kitserv_http_send_response(struct kitserv_client* client)
 {
     ssize_t rc = 0;
@@ -1342,16 +1388,15 @@ int kitserv_http_send_response(struct kitserv_client* client)
 
     // have a file to send
     if (client->ta.resp_fd > 0 && client->ta.req_method != HTTP_HEAD) {
-#ifdef __linux__
         do {
+#ifdef KITSERV_HAVE_SENDFILE
             rc = sendfile(client->sockfd, client->ta.resp_fd, &client->ta.resp_body_pos,
                           client->ta.resp_body_end - client->ta.resp_body_pos + 1);
-        } while (rc > 0);
 #else
-        // TODO: send the file here using `send(2)`
-        fprintf(stderr, "Kitserv: cannot send file (not implemented).\n");
-        client->ta.resp_body_pos = client->ta.resp_body_end + 1;
+            rc = sendfile_emulation(client->sockfd, client->ta.resp_fd, &client->ta.resp_body_pos,
+                                    client->ta.resp_body_end - client->ta.resp_body_pos + 1);
 #endif
+        } while (rc > 0 && client->ta.resp_body_pos <= client->ta.resp_body_end);
         if (client->ta.resp_body_pos > client->ta.resp_body_end) {
             // finished sending the file - pos should be one greater than end here
             close_fd_to_zero(&client->ta.resp_fd);
