@@ -49,6 +49,7 @@ enum kitserv_http_response_status {
     HTTP_X_RESP_STATUS_UNSET = 0,
     HTTP_X_HANGUP = 1,  // connection has closed, do not bother generating a response
     HTTP_200_OK = 200,
+    HTTP_204_NO_CONTENT = 204,
     HTTP_206_PARTIAL_CONTENT = 206,
     HTTP_304_NOT_MODIFIED = 304,
     HTTP_400_BAD_REQUEST = 400,

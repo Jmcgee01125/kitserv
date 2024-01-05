@@ -1098,6 +1098,8 @@ static const char* get_status_string(enum kitserv_http_response_status status)
     switch (status) {
         case HTTP_200_OK:
             return "200 OK\r\n";
+        case HTTP_204_NO_CONTENT:
+            return "204 No Content\r\n";
         case HTTP_206_PARTIAL_CONTENT:
             return "206 Partial Content\r\n";
         case HTTP_304_NOT_MODIFIED:
