@@ -335,11 +335,12 @@ void kitserv_server_start(struct kitserv_config* config)
         abort();
     }
     if (config->num_slots < config->num_workers) {
-        fprintf(stderr, "Invalid slot/worker ratio: %d/%d\n", config->num_slots, config->num_workers);
+        fprintf(stderr, "Invalid slot/worker count: %d < %d\n", config->num_slots, config->num_workers);
         abort();
     }
 
-    slots = config->num_slots / config->num_workers;  // share slots between workers
+    // share slots between workers, round up to nearest multiple
+    slots = (config->num_slots + config->num_workers - 1) / config->num_workers;
 
     kitserv_http_init(config->http_root_context, config->api_tree);
 
