@@ -1,4 +1,4 @@
-.Dd December 23, 2023
+.Dd January 25, 2024
 .Os LOCAL
 .Dt KITSERV_SERVER_START 3 LOCAL
 .Sh NAME
@@ -57,7 +57,9 @@ struct kitserv_api_tree {
 .Pp
 The
 .Fn kitserv_server_start
-function initializes and starts an instance of the Kitserv web server.
+function initializes and starts an instance of the Kitserv web server. Threads
+existing in conjunction with Kitserv workers should not attempt to modify the
+config, API tree, or other similar structures post-startup.
 .Pp
 .Vt struct kitserv_config
 contains the configuration for this instance. The entries of that struct
