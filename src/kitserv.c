@@ -328,15 +328,15 @@ void kitserv_server_start(struct kitserv_config* config)
 
     if (config->num_slots <= 0) {
         fprintf(stderr, "Invalid slot count: %d <= 0\n", config->num_slots);
-        abort();
+        exit(1);
     }
     if (config->num_workers <= 0) {
         fprintf(stderr, "Invalid worker count: %d <= 0\n", config->num_workers);
-        abort();
+        exit(1);
     }
     if (config->num_slots < config->num_workers) {
         fprintf(stderr, "Invalid slot/worker count: %d < %d\n", config->num_slots, config->num_workers);
-        abort();
+        exit(1);
     }
 
     // share slots between workers, round up to nearest multiple
