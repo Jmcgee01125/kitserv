@@ -1,4 +1,4 @@
-.Dd December 21, 2023
+.Dd February 5, 2024
 .Os LOCAL
 .Dt KITSERV_API_READ_PAYLOAD 3 LOCAL
 .Sh NAME
@@ -30,9 +30,10 @@ be returned in any future calls. The endpoint is responsible for making
 sure that it does not read more than content-length bytes.
 .Pp
 Because Kitserv uses nonblocking sockets, it is possible that this request
-blocks. If this happens, the endpoint should return from the handler function
-and give control back to Kitserv. So long as the HTTP response status is not
-set (it is 
+cannot be completed immediately. (This function should be called in a loop
+as it may read partial amounts). If it would block, the endpoint should
+return from the handler function and give control back to Kitserv. So long
+as the HTTP response status is not set (it is
 .Dv HTTP_X_RESP_STATUS_UNSET ) No then Kitserv will re-call the handler
 when more data is available. Endpoints may make use of
 .Xr kitserv_api_save_state 3
