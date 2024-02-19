@@ -323,6 +323,7 @@ void kitserv_server_start(struct kitserv_config* config)
     int i;
     struct worker* workers;
     struct accepter* accepters;
+    struct sigaction sigact_ign;
 
     kitserv_silent_mode = config->silent_mode;
 
@@ -354,8 +355,9 @@ void kitserv_server_start(struct kitserv_config* config)
         abort();
     }
     // ignore PIPE in case a client closes on us during a transaction
-    if (signal(SIGPIPE, SIG_IGN)) {
-        perror("signal");
+    sigact_ign.sa_handler = SIG_IGN;
+    if (sigaction(SIGPIPE, &sigact_ign, NULL)) {
+        perror("sigaction");
         abort();
     }
 
