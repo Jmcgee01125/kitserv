@@ -95,11 +95,3 @@ int kitserv_queue_remove(int qfd, int fd)
 #endif
     return 0;
 }
-
-void* kitserv_queue_event_to_data(const queue_event* event)
-{
-#ifdef __linux__
-    return event->data.ptr;
-#else
-#endif
-}
