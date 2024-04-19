@@ -162,4 +162,10 @@ int kitserv_http_serve_request(struct kitserv_client* client);
 int kitserv_http_prepare_response(struct kitserv_client* client);
 int kitserv_http_send_response(struct kitserv_client* client);
 
+/**
+ * Serve the given connection as much as possible.
+ * Returns 0 if the connection is still alive, -1 if it should be closed.
+ */
+int kitserv_http_serve_client(struct kitserv_client* client);
+
 #endif
