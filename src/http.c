@@ -341,6 +341,7 @@ int kitserv_http_parse_range(struct kitserv_client* client, off_t* out_from, off
     if (!hyphen) {
         return -1;
     }
+
     if (p == hyphen) {
         // i.e. bytes=-YYY
         p = NULL;
@@ -354,30 +355,34 @@ int kitserv_http_parse_range(struct kitserv_client* client, off_t* out_from, off
         *hyphen = '\0';  // cap off p
         // bytes=XXX- or bytes=XXX-YYY
         if (strtonum(p, &from)) {
-            return -1;
+            goto err;
         }
         if (q) {
             // bytes=XXX-YYY
             if (strtonum(q, &to)) {
-                return -1;
+                goto err;
             }
             if (to < from) {
-                return -1;
+                goto err;
             }
         }
     } else if (q) {
         // bytes=-YYY
         if (strtonum(q, &to)) {
-            return -1;
+            goto err;
         }
     } else {
         // mm yes `bytes=-`, very good
-        return -1;
+        goto err;
     }
 
+    *hyphen = '-';
     *out_from = from;
     *out_to = to;
     return 0;
+err:
+    *hyphen = '-';
+    return -1;
 }
 
 /**
