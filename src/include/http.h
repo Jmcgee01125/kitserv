@@ -63,6 +63,7 @@ struct http_transaction {
     char* req_range;
     char* req_disposition;
     char* req_modified_since;
+    char* req_cookie_header;
     int req_num_cookies;
 
     /* Response fields */
@@ -103,7 +104,7 @@ struct http_transaction {
 
 struct kitserv_client {
     char* req_headers;                // persistent request header information (HTTP_BUFSZ)
-    struct http_cookie* req_cookies;  // number of cookies stored in ta
+    struct http_cookie* req_cookies;  // number of cookies is stored in ta - this is here to be a reusable buffer
 
     char* resp_start;    // response start buffer (HTTP_BUFSZ_SMALL)
     char* resp_headers;  // response headers buffer (HTTP_BUFZ)
@@ -149,6 +150,12 @@ void kitserv_http_reset_client(struct kitserv_client*);
  * Return 0 on success, -1 on parse error / no header (*from and *to unchanged).
  */
 int kitserv_http_parse_range(struct kitserv_client*, off_t* out_from, off_t* out_to);
+
+/**
+ * Parse the cookies for a request. Must be done before cookies can be used.
+ * Returns 0 on success, -1 on parse error or no cookies.
+ */
+int kitserv_http_parse_cookies(struct kitserv_client* client);
 
 /**
  * The following functions process a request.

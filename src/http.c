@@ -192,60 +192,7 @@ static inline bool status_is_error(enum kitserv_http_response_status status)
 
 static int parse_header_cookie(struct kitserv_client* client, char* value)
 {
-    // Cookie: NAME=VALUE; NAME=VALUE
-
-    char* p = value;
-    char* r;  // =, then value
-    char* q;  // ; or NULL if end
-    int cookie_index = client->ta.req_num_cookies;
-
-    /*  name=value;
-     *  ^    ^    ^
-     *  p    r    q
-     */
-
-    while (1) {
-        // consume whitespace
-        for (; *p == ' ' || *p == '\t'; p++)
-            ;
-
-        // TODO: there are possible illegal characters in cookie names and values, which we don't filter
-
-        r = strchr(p, '=');
-        if (!r) {
-            // saw something weird, discard this header without saving cookies
-            return 0;
-        }
-        q = strchr(r, ';');
-        if (q) {
-            *q = '\0';
-        }
-        *r = '\0';
-        r++;
-
-        // cookie has an actual value
-        if (r != q) {
-            if (cookie_index < HTTP_MAX_COOKIES) {
-                client->req_cookies[cookie_index].key = p;
-                client->req_cookies[cookie_index].value = r;
-                client->req_cookies[cookie_index].keylen = r - p - 1;
-                cookie_index++;
-            } else {
-                // discard extra cookies - we're stuffed!
-                goto finished;
-            }
-        }
-
-        // go to next cookie if it exists, otherwise break out
-        if (!q) {
-            break;
-        }
-        p = q + 1;
-    }
-
-finished:
-    // commit all of our spotted cookies
-    client->ta.req_num_cookies = cookie_index + 1;
+    client->ta.req_cookie_header = value;
     return 0;
 }
 
@@ -305,6 +252,69 @@ static const struct header headers[] = {
     {.name = "content-type", .len = 12, .func = parse_header_content_type},
     {.name = "content-disposition", .len = 19, .func = parse_header_content_disposition},
 };
+
+int kitserv_http_parse_cookies(struct kitserv_client* client)
+{
+    // Cookie: NAME=VALUE; NAME=VALUE
+
+    char* p = client->ta.req_cookie_header;
+    char* r;  // =, then value
+    char* q;  // ; or NULL if end
+    int cookie_index = 0;
+
+    assert(client->req_cookies != NULL);
+
+    /*  name=value;
+     *  ^    ^    ^
+     *  p    r    q
+     */
+
+    while (1) {
+        // consume whitespace
+        for (; *p == ' ' || *p == '\t'; p++)
+            ;
+
+        // TODO: there are possible illegal characters in cookie names and values, which we don't filter
+
+        r = strchr(p, '=');
+        if (!r) {
+            // saw something weird, discard this header without saving cookies
+            client->ta.req_cookie_header = NULL;
+            return -1;
+        }
+        q = strchr(r, ';');
+        if (q) {
+            *q = '\0';
+        }
+        *r = '\0';
+        r++;
+
+        // cookie has an actual value
+        if (r != q) {
+            if (cookie_index < HTTP_MAX_COOKIES) {
+                client->req_cookies[cookie_index].key = p;
+                client->req_cookies[cookie_index].value = r;
+                client->req_cookies[cookie_index].keylen = r - p - 1;
+                cookie_index++;
+            } else {
+                // discard extra cookies - we're stuffed!
+                goto finished;
+            }
+        }
+
+        // go to next cookie if it exists, otherwise break out
+        if (!q) {
+            break;
+        }
+        p = q + 1;
+    }
+
+finished:
+    // commit all of our spotted cookies
+    client->ta.req_num_cookies = cookie_index + 1;
+    client->ta.req_cookie_header = NULL;
+    return 0;
+}
 
 int kitserv_http_parse_range(struct kitserv_client* client, off_t* out_from, off_t* out_to)
 {
