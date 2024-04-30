@@ -192,7 +192,7 @@ static inline bool status_is_error(enum kitserv_http_response_status status)
 
 static int parse_header_cookie(struct kitserv_client* client, char* value)
 {
-    client->ta.req_cookie_header = value;
+    client->ta.req_fresh_cookies = value;
     return 0;
 }
 
@@ -257,7 +257,7 @@ int kitserv_http_parse_cookies(struct kitserv_client* client)
 {
     // Cookie: NAME=VALUE; NAME=VALUE
 
-    char* p = client->ta.req_cookie_header;
+    char* p = client->ta.req_fresh_cookies;
     char* r;  // =, then value
     char* q;  // ; or NULL if end
     int cookie_index = 0;
@@ -271,7 +271,8 @@ int kitserv_http_parse_cookies(struct kitserv_client* client)
 
     while (1) {
         // consume whitespace
-        for (; *p == ' ' || *p == '\t'; p++)
+        // RFC 6265 says there should be one space, but we'll take any number
+        for (; *p == ' '; p++)
             ;
 
         // TODO: there are possible illegal characters in cookie names and values, which we don't filter
@@ -279,7 +280,7 @@ int kitserv_http_parse_cookies(struct kitserv_client* client)
         r = strchr(p, '=');
         if (!r) {
             // saw something weird, discard this header without saving cookies
-            client->ta.req_cookie_header = NULL;
+            client->ta.req_fresh_cookies = NULL;
             return -1;
         }
         q = strchr(r, ';');
@@ -312,7 +313,7 @@ int kitserv_http_parse_cookies(struct kitserv_client* client)
 finished:
     // commit all of our spotted cookies
     client->ta.req_num_cookies = cookie_index + 1;
-    client->ta.req_cookie_header = NULL;
+    client->ta.req_fresh_cookies = NULL;
     return 0;
 }
 

@@ -47,7 +47,7 @@ const char* kitserv_api_get_request_cookie_n(struct kitserv_client* client, cons
         errno = EINVAL;
         return NULL;
     }
-    if (client->ta.req_cookie_header) {
+    if (client->ta.req_fresh_cookies) {
         kitserv_http_parse_cookies(client);
     }
     for (i = 0; i < client->ta.req_num_cookies; i++) {

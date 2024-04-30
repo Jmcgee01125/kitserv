@@ -63,7 +63,7 @@ struct http_transaction {
     char* req_range;
     char* req_disposition;
     char* req_modified_since;
-    char* req_cookie_header;
+    char* req_fresh_cookies;
     int req_num_cookies;
 
     /* Response fields */
