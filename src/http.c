@@ -1430,6 +1430,14 @@ int kitserv_http_send_response(struct kitserv_client* client)
     return 0;
 }
 
+/**
+ * Log a transaction to stdout - this should be done once everything is finished.
+ */
+static void log_transaction(struct kitserv_client* client)
+{
+    printf("[%d] %s\n", client->ta.resp_status, client->ta.req_path);
+}
+
 int kitserv_http_serve_client(struct kitserv_client* client)
 {
     enum http_transaction_state* state = &client->ta.state;
@@ -1471,6 +1479,9 @@ prep_response:
                     return -1;
                 } else if (*state == HTTP_STATE_PREPARE_RESPONSE) {
                     return 0;
+                }
+                if (!kitserv_silent_mode) {
+                    log_transaction(client);
                 }
                 /* fallthrough */
             case HTTP_STATE_SEND:
