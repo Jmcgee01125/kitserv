@@ -139,10 +139,10 @@ static inline void close_fd_to_zero(int* fd)
  * Returns 0 on success, -1 on failure.
  * *offset is not incremented on failure, but buf[offset..max] is undefined.
  */
-static inline int str_appendva(char* buf, int* offset, int max, const char* fmt, va_list* ap)
+static inline int str_appendva(char* buf, size_t* offset, size_t max, const char* fmt, va_list* ap)
 {
     int rc = vsnprintf(&buf[*offset], max - *offset, fmt, *ap);
-    if (rc >= max - *offset || rc < 0) {
+    if (rc < 0 || (size_t)rc >= max - *offset) {
         // didn't fit
         return -1;
     }
@@ -155,7 +155,7 @@ static inline int str_appendva(char* buf, int* offset, int max, const char* fmt,
  * Returns 0 on success, -1 on failure.
  * *offset is not incremented on failure, but buf[offset..max] is undefined.
  */
-static int str_append(char* buf, int* offset, int max, char* fmt, ...)
+static int str_append(char* buf, size_t* offset, size_t max, char* fmt, ...)
 {
     va_list ap;
     int rc;
@@ -498,20 +498,20 @@ static void url_decode(char* str)
 static inline int http_header_add_ap(struct kitserv_client* client, const char* key, const char* fmt, va_list* ap)
 {
     int pre_sz;
-    pre_sz = client->ta.resp_headers_len;
+    pre_sz = client->ta.resp_bufs[1].iov_len;
 
     // append key
-    if (str_append(client->resp_headers, &client->ta.resp_headers_len, HTTP_BUFSZ, "%s: ", key)) {
+    if (str_append(client->resp_headers, &client->ta.resp_bufs[1].iov_len, HTTP_BUFSZ, "%s: ", key)) {
         goto too_large;
     }
 
     // append value
-    if (str_appendva(client->resp_headers, &client->ta.resp_headers_len, HTTP_BUFSZ, fmt, ap)) {
+    if (str_appendva(client->resp_headers, &client->ta.resp_bufs[1].iov_len, HTTP_BUFSZ, fmt, ap)) {
         goto too_large;
     }
 
     // append EOL
-    if (str_append(client->resp_headers, &client->ta.resp_headers_len, HTTP_BUFSZ, "\r\n")) {
+    if (str_append(client->resp_headers, &client->ta.resp_bufs[1].iov_len, HTTP_BUFSZ, "\r\n")) {
         goto too_large;
     }
     return 0;
@@ -519,7 +519,7 @@ static inline int http_header_add_ap(struct kitserv_client* client, const char* 
 too_large:
     // couldn't fit the header, reset and return
     errno = ENOMEM;
-    client->ta.resp_headers_len = pre_sz;
+    client->ta.resp_bufs[1].iov_len = pre_sz;
     client->ta.resp_status = HTTP_507_INSUFFICIENT_STORAGE;
     return -1;
 }
@@ -1162,10 +1162,10 @@ static const char* get_status_string(enum kitserv_http_response_status status)
 static inline void prepare_resp_start(struct kitserv_client* client)
 {
     // should always fit, unless some idiot changed the buffer size to be too small
-    client->ta.resp_start_len = 0;
-    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ_SMALL, "%s",
+    client->ta.resp_bufs[0].iov_len = 0;
+    str_append(client->resp_start, &client->ta.resp_bufs[0].iov_len, HTTP_BUFSZ_SMALL, "%s",
                get_version_string(client->ta.req_version));
-    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ_SMALL, "%s",
+    str_append(client->resp_start, &client->ta.resp_bufs[0].iov_len, HTTP_BUFSZ_SMALL, "%s",
                get_status_string(client->ta.resp_status));
 }
 
@@ -1174,7 +1174,7 @@ static inline void prepare_resp_start(struct kitserv_client* client)
  */
 static int prepare_error_response_headers(struct kitserv_client* client)
 {
-    client->ta.resp_headers_len = 0;
+    client->ta.resp_bufs[1].iov_len = 0;
 
     if (client->ta.resp_status == HTTP_405_METHOD_NOT_ALLOWED && http_header_add_allow(client)) {
         return -1;
@@ -1275,9 +1275,18 @@ success:
         goto error_response;
     }
 
-    if (str_append(client->resp_headers, &client->ta.resp_headers_len, HTTP_BUFSZ, "\r\n")) {
+    if (str_append(client->resp_headers, &client->ta.resp_bufs[1].iov_len, HTTP_BUFSZ, "\r\n")) {
         client->ta.resp_fd = HTTP_507_INSUFFICIENT_STORAGE;
         goto error_response;
+    }
+
+    // update the bases, since we're going to use them
+    client->ta.resp_bufs[0].iov_base = client->resp_start;
+    client->ta.resp_bufs[1].iov_base = client->resp_headers;
+    if (client->ta.resp_fd == 0 && client->ta.req_method != HTTP_HEAD) {
+        // rely on memset zeroing in the case that we aren't sending this buf
+        client->ta.resp_bufs[2].iov_base = &client->resp_body.buf[client->ta.resp_body_pos];
+        client->ta.resp_bufs[2].iov_len = client->resp_body.len - client->ta.resp_body_pos;
     }
 
     client->ta.state = HTTP_STATE_SEND;
@@ -1301,6 +1310,38 @@ error_response:
     }
     already_errored = true;
     goto success;
+}
+
+int kitserv_http_send_response(struct kitserv_client* client)
+{
+    ssize_t rc = 0;
+    int i;
+
+    while (1) {
+        // writev will ignore 0-length iovecs - very convenient
+        rc = writev(client->sockfd, client->ta.resp_bufs, 3);
+        if (rc < 0) {
+            return errno = EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
+        }
+
+        for (i = 0; i < 3; i++) {
+            // always increment the base - either we sent that or that base is/becoming irrelevant
+            // wacky += because void* is not addable under -Wpedantic - but it's literally a char* anyway
+            client->ta.resp_bufs[i].iov_base = (char*)(client->ta.resp_bufs[i].iov_base) + rc;
+
+            if (client->ta.resp_bufs[i].iov_len <= (size_t)rc) {
+                client->ta.resp_bufs[i].iov_len = 0;
+            } else {
+                // rc falls within this buf
+                client->ta.resp_bufs[i].iov_len -= rc;
+                break;
+            }
+        }
+        if (i == 3 && client->ta.resp_bufs[2].iov_len == 0) {
+            client->ta.state = HTTP_STATE_SEND_FILE;
+            return 0;
+        }
+    }
 }
 
 #ifndef KITSERV_HAVE_SENDFILE
@@ -1348,63 +1389,10 @@ err:
 }
 #endif
 
-int kitserv_http_send_response(struct kitserv_client* client)
+int kitserv_http_send_response_file(struct kitserv_client* client)
 {
     ssize_t rc = 0;
-    struct iovec sendbufs[3];
-    int sendbufs_idx;
-    bool sent_start, sent_head, sent_body;
 
-    do {
-        // load buffers that need to be sent
-        sendbufs_idx = 0;
-        sent_start = false, sent_head = false, sent_body = false;
-        if (client->ta.resp_start_pos < client->ta.resp_start_len) {
-            sendbufs[sendbufs_idx].iov_base = &client->resp_start[client->ta.resp_start_pos];
-            sendbufs[sendbufs_idx].iov_len = client->ta.resp_start_len - client->ta.resp_start_pos;
-            sendbufs_idx++;
-            sent_start = true;
-        }
-        if (client->ta.resp_headers_pos < client->ta.resp_headers_len) {
-            sendbufs[sendbufs_idx].iov_base = &client->resp_headers[client->ta.resp_headers_pos];
-            sendbufs[sendbufs_idx].iov_len = client->ta.resp_headers_len - client->ta.resp_headers_pos;
-            sendbufs_idx++;
-            sent_head = true;
-        }
-        if (client->ta.resp_fd == 0 && client->ta.req_method != HTTP_HEAD &&
-            client->ta.resp_body_pos <= client->resp_body.len) {
-            sendbufs[sendbufs_idx].iov_base = &client->resp_body.buf[client->ta.resp_body_pos];
-            sendbufs[sendbufs_idx].iov_len = client->resp_body.len - client->ta.resp_body_pos;
-            sendbufs_idx++;
-            sent_body = true;
-        }
-
-        if (sent_start || sent_head || sent_body) {
-            // send the buffers that got filled in
-            rc = writev(client->sockfd, sendbufs, sendbufs_idx);
-            if (rc < 0) {
-                return errno == EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
-            }
-
-            // increment our send variables - take bytes out of rc, up to the space that's unsent
-            if (sent_start) {
-                client->ta.resp_start_pos += rc;
-                // set rc to the number of bytes not consumed here, or negative if we couldn't finish this segment
-                rc = client->ta.resp_start_pos - client->ta.resp_start_len;
-            }
-            if (sent_head && rc > 0) {
-                client->ta.resp_headers_pos += rc;
-                rc = client->ta.resp_headers_pos - client->ta.resp_headers_len;
-            }
-            if (sent_body && rc > 0) {
-                client->ta.resp_body_pos += rc;
-                rc = client->ta.resp_body_pos - client->resp_body.len;
-            }
-            assert(rc <= 0);  // should have either consumed all bytes or have more to send
-        }
-    } while (rc < 0);  // while rc is below 0, we didn't send everything we wanted to
-
-    // have a file to send
     if (client->ta.resp_fd > 0 && client->ta.req_method != HTTP_HEAD) {
         do {
 #ifdef KITSERV_HAVE_SENDFILE
@@ -1488,6 +1476,13 @@ prep_response:
                 if (kitserv_http_send_response(client)) {
                     return -1;
                 } else if (*state == HTTP_STATE_SEND) {
+                    return 0;
+                }
+                /* fallthrough */
+            case HTTP_STATE_SEND_FILE:
+                if (kitserv_http_send_response_file(client)) {
+                    return -1;
+                } else if (*state == HTTP_STATE_SEND_FILE) {
                     return 0;
                 }
                 /* fallthrough */

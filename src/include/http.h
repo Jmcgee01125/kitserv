@@ -5,6 +5,7 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
+#include <sys/uio.h>
 
 #include "buffer.h"
 #include "kitserv.h"
@@ -19,6 +20,7 @@ enum http_transaction_state {
     HTTP_STATE_SERVE,
     HTTP_STATE_PREPARE_RESPONSE,
     HTTP_STATE_SEND,
+    HTTP_STATE_SEND_FILE,
     HTTP_STATE_DONE,
 };
 
@@ -68,10 +70,13 @@ struct http_transaction {
 
     /* Response fields */
     enum kitserv_http_response_status resp_status;
-    int resp_start_pos;  // index of data not yet sent, >= len when done
-    int resp_start_len;  // total length
-    int resp_headers_pos;
-    int resp_headers_len;
+    /**
+     * Start line, header, and body io information (in that order).
+     * Lengths should always be kept up to date, representing unsent information.
+     * Exception to the above: the body is tracked by resp_body_{pos,end} until sending begins.
+     * The base is only relevant when sending - do not use otherwise.
+     */
+    struct iovec resp_bufs[3];
     /**
      * content-length header:
      *      if resp_fd == 0, set to `client.resp_body.len - client.ta.resp_body_pos`
@@ -168,6 +173,7 @@ int kitserv_http_recv_request(struct kitserv_client* client);
 int kitserv_http_serve_request(struct kitserv_client* client);
 int kitserv_http_prepare_response(struct kitserv_client* client);
 int kitserv_http_send_response(struct kitserv_client* client);
+int kitserv_http_send_response_file(struct kitserv_client* client);
 
 /**
  * Serve the given connection as much as possible.

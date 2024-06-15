@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/types.h>
 
 #include "http.h"
@@ -290,6 +291,7 @@ void kitserv_server_start(struct kitserv_config* config)
         abort();
     }
     // ignore PIPE in case a client closes on us during a transaction
+    memset(&sigact_ign, 0, sizeof(struct sigaction));
     sigact_ign.sa_handler = SIG_IGN;
     if (sigaction(SIGPIPE, &sigact_ign, NULL)) {
         perror("sigaction");
@@ -339,7 +341,7 @@ void kitserv_server_start(struct kitserv_config* config)
         abort();
     }
 
-    //                                               workers               accept threads              self
+    //  info -->                                     workers               accept threads              self
     if (pthread_barrier_init(&startup_barrier, NULL, config->num_workers + !!bind_ipv4 + !!bind_ipv6 + 1)) {
         perror("pthread_barrier_init");
         abort();

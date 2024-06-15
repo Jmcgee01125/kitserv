@@ -151,7 +151,7 @@ int kitserv_api_write_body_fmt(struct kitserv_client* client, const char* fmt, .
 
 void kitserv_api_reset_headers(struct kitserv_client* client)
 {
-    client->ta.resp_headers_len = 0;
+    client->ta.resp_bufs[1].iov_len = 0;
 }
 
 void kitserv_api_reset_body(struct kitserv_client* client)
