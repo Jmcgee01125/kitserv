@@ -50,6 +50,12 @@ int kitserv_queue_remove(int qfd, int fd);
 /**
  * Returns the data pointer associated with an event.
  */
-void* kitserv_queue_event_to_data(const queue_event*);
+static inline void* kitserv_queue_event_to_data(const queue_event* event)
+{
+#ifdef __linux__
+    return event->data.ptr;
+#else
+#endif
+}
 
 #endif

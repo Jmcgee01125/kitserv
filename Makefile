@@ -48,11 +48,11 @@ $(LIB):	$(OBJS) Makefile
 	@$(RM) -f $(LIB)
 	$(AR) rcs -o $@ $(OBJS)
 
-$(STANDALONE): $(BIN_OBJS) Makefile
+$(STANDALONE):	$(BIN_OBJS) Makefile
 	@mkdir -p $(BIN_DIR)
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $(BIN_OBJS)
 
-install: all
+install:	all
 	@mkdir -p $(KITSERV_INCDIR)
 	@mkdir -p $(KITSERV_LIBDIR)
 	@mkdir -p $(KITSERV_BINDIR)

@@ -5,6 +5,7 @@
 
 #include <inttypes.h>
 #include <stdbool.h>
+#include <sys/uio.h>
 
 #include "buffer.h"
 #include "kitserv.h"
@@ -19,6 +20,7 @@ enum http_transaction_state {
     HTTP_STATE_SERVE,
     HTTP_STATE_PREPARE_RESPONSE,
     HTTP_STATE_SEND,
+    HTTP_STATE_SEND_FILE,
     HTTP_STATE_DONE,
 };
 
@@ -63,14 +65,18 @@ struct http_transaction {
     char* req_range;
     char* req_disposition;
     char* req_modified_since;
+    char* req_fresh_cookies;
     int req_num_cookies;
 
     /* Response fields */
     enum kitserv_http_response_status resp_status;
-    int resp_start_pos;  // index of data not yet sent, >= len when done
-    int resp_start_len;  // total length
-    int resp_headers_pos;
-    int resp_headers_len;
+    /**
+     * Start line, header, and body io information (in that order).
+     * Lengths should always be kept up to date, representing unsent information.
+     * Exception to the above: the body is tracked by resp_body_{pos,end} until sending begins.
+     * The base is only relevant when sending - do not use otherwise.
+     */
+    struct iovec resp_bufs[3];
     /**
      * content-length header:
      *      if resp_fd == 0, set to `client.resp_body.len - client.ta.resp_body_pos`
@@ -103,7 +109,7 @@ struct http_transaction {
 
 struct kitserv_client {
     char* req_headers;                // persistent request header information (HTTP_BUFSZ)
-    struct http_cookie* req_cookies;  // number of cookies stored in ta
+    struct http_cookie* req_cookies;  // number of cookies is stored in ta - this is here to be a reusable buffer
 
     char* resp_start;    // response start buffer (HTTP_BUFSZ_SMALL)
     char* resp_headers;  // response headers buffer (HTTP_BUFZ)
@@ -151,6 +157,12 @@ void kitserv_http_reset_client(struct kitserv_client*);
 int kitserv_http_parse_range(struct kitserv_client*, off_t* out_from, off_t* out_to);
 
 /**
+ * Parse the cookies for a request. Must be done before cookies can be used.
+ * Returns 0 on success, -1 on parse error or no cookies.
+ */
+int kitserv_http_parse_cookies(struct kitserv_client* client);
+
+/**
  * The following functions process a request.
  *
  * Returns -1 on error, or 0 if data was successfully read (even if partially).
@@ -161,5 +173,12 @@ int kitserv_http_recv_request(struct kitserv_client* client);
 int kitserv_http_serve_request(struct kitserv_client* client);
 int kitserv_http_prepare_response(struct kitserv_client* client);
 int kitserv_http_send_response(struct kitserv_client* client);
+int kitserv_http_send_response_file(struct kitserv_client* client);
+
+/**
+ * Serve the given connection as much as possible.
+ * Returns 0 if the connection is still alive, -1 if it should be closed.
+ */
+int kitserv_http_serve_client(struct kitserv_client* client);
 
 #endif

@@ -22,6 +22,7 @@
 #include <unistd.h>
 
 #ifdef __linux__
+#define KITSERV_HAVE_SENDFILE
 #include <sys/sendfile.h>
 #endif
 
@@ -138,10 +139,10 @@ static inline void close_fd_to_zero(int* fd)
  * Returns 0 on success, -1 on failure.
  * *offset is not incremented on failure, but buf[offset..max] is undefined.
  */
-static inline int str_appendva(char* buf, int* offset, int max, const char* fmt, va_list* ap)
+static inline int str_appendva(char* buf, size_t* offset, size_t max, const char* fmt, va_list* ap)
 {
     int rc = vsnprintf(&buf[*offset], max - *offset, fmt, *ap);
-    if (rc >= max - *offset || rc < 0) {
+    if (rc < 0 || (size_t)rc >= max - *offset) {
         // didn't fit
         return -1;
     }
@@ -154,7 +155,7 @@ static inline int str_appendva(char* buf, int* offset, int max, const char* fmt,
  * Returns 0 on success, -1 on failure.
  * *offset is not incremented on failure, but buf[offset..max] is undefined.
  */
-static int str_append(char* buf, int* offset, int max, char* fmt, ...)
+static int str_append(char* buf, size_t* offset, size_t max, char* fmt, ...)
 {
     va_list ap;
     int rc;
@@ -191,60 +192,7 @@ static inline bool status_is_error(enum kitserv_http_response_status status)
 
 static int parse_header_cookie(struct kitserv_client* client, char* value)
 {
-    // Cookie: NAME=VALUE; NAME=VALUE
-
-    char* p = value;
-    char* r;  // =, then value
-    char* q;  // ; or NULL if end
-    int cookie_index = client->ta.req_num_cookies;
-
-    /*  name=value;
-     *  ^    ^    ^
-     *  p    r    q
-     */
-
-    while (1) {
-        // consume whitespace
-        for (; *p == ' ' || *p == '\t'; p++)
-            ;
-
-        // TODO: there are possible illegal characters in cookie names and values, which we don't filter
-
-        r = strchr(p, '=');
-        if (!r) {
-            // saw something weird, discard this header without saving cookies
-            return 0;
-        }
-        q = strchr(r, ';');
-        if (q) {
-            *q = '\0';
-        }
-        *r = '\0';
-        r++;
-
-        // cookie has an actual value
-        if (r != q) {
-            if (cookie_index < HTTP_MAX_COOKIES) {
-                client->req_cookies[cookie_index].key = p;
-                client->req_cookies[cookie_index].value = r;
-                client->req_cookies[cookie_index].keylen = r - p - 1;
-                cookie_index++;
-            } else {
-                // discard extra cookies - we're stuffed!
-                goto finished;
-            }
-        }
-
-        // go to next cookie if it exists, otherwise break out
-        if (!q) {
-            break;
-        }
-        p = q + 1;
-    }
-
-finished:
-    // commit all of our spotted cookies
-    client->ta.req_num_cookies = cookie_index + 1;
+    client->ta.req_fresh_cookies = value;
     return 0;
 }
 
@@ -305,6 +253,70 @@ static const struct header headers[] = {
     {.name = "content-disposition", .len = 19, .func = parse_header_content_disposition},
 };
 
+int kitserv_http_parse_cookies(struct kitserv_client* client)
+{
+    // Cookie: NAME=VALUE; NAME=VALUE
+
+    char* p = client->ta.req_fresh_cookies;
+    char* r;  // =, then value
+    char* q;  // ; or NULL if end
+    int cookie_index = 0;
+
+    assert(client->req_cookies != NULL);
+
+    /*  name=value;
+     *  ^    ^    ^
+     *  p    r    q
+     */
+
+    while (1) {
+        // consume whitespace
+        // RFC 6265 says there should be one space, but we'll take any number
+        for (; *p == ' '; p++)
+            ;
+
+        // TODO: there are possible illegal characters in cookie names and values, which we don't filter
+
+        r = strchr(p, '=');
+        if (!r) {
+            // saw something weird, discard this header without saving cookies
+            client->ta.req_fresh_cookies = NULL;
+            return -1;
+        }
+        q = strchr(r, ';');
+        if (q) {
+            *q = '\0';
+        }
+        *r = '\0';
+        r++;
+
+        // cookie has an actual value
+        if (r != q) {
+            if (cookie_index < HTTP_MAX_COOKIES) {
+                client->req_cookies[cookie_index].key = p;
+                client->req_cookies[cookie_index].value = r;
+                client->req_cookies[cookie_index].keylen = r - p - 1;
+                cookie_index++;
+            } else {
+                // discard extra cookies - we're stuffed!
+                goto finished;
+            }
+        }
+
+        // go to next cookie if it exists, otherwise break out
+        if (!q) {
+            break;
+        }
+        p = q + 1;
+    }
+
+finished:
+    // commit all of our spotted cookies
+    client->ta.req_num_cookies = cookie_index + 1;
+    client->ta.req_fresh_cookies = NULL;
+    return 0;
+}
+
 int kitserv_http_parse_range(struct kitserv_client* client, off_t* out_from, off_t* out_to)
 {
     char* p = client->ta.req_range;
@@ -340,6 +352,7 @@ int kitserv_http_parse_range(struct kitserv_client* client, off_t* out_from, off
     if (!hyphen) {
         return -1;
     }
+
     if (p == hyphen) {
         // i.e. bytes=-YYY
         p = NULL;
@@ -353,30 +366,34 @@ int kitserv_http_parse_range(struct kitserv_client* client, off_t* out_from, off
         *hyphen = '\0';  // cap off p
         // bytes=XXX- or bytes=XXX-YYY
         if (strtonum(p, &from)) {
-            return -1;
+            goto err;
         }
         if (q) {
             // bytes=XXX-YYY
             if (strtonum(q, &to)) {
-                return -1;
+                goto err;
             }
             if (to < from) {
-                return -1;
+                goto err;
             }
         }
     } else if (q) {
         // bytes=-YYY
         if (strtonum(q, &to)) {
-            return -1;
+            goto err;
         }
     } else {
         // mm yes `bytes=-`, very good
-        return -1;
+        goto err;
     }
 
+    *hyphen = '-';
     *out_from = from;
     *out_to = to;
     return 0;
+err:
+    *hyphen = '-';
+    return -1;
 }
 
 /**
@@ -481,20 +498,20 @@ static void url_decode(char* str)
 static inline int http_header_add_ap(struct kitserv_client* client, const char* key, const char* fmt, va_list* ap)
 {
     int pre_sz;
-    pre_sz = client->ta.resp_headers_len;
+    pre_sz = client->ta.resp_bufs[1].iov_len;
 
     // append key
-    if (str_append(client->resp_headers, &client->ta.resp_headers_len, HTTP_BUFSZ, "%s: ", key)) {
+    if (str_append(client->resp_headers, &client->ta.resp_bufs[1].iov_len, HTTP_BUFSZ, "%s: ", key)) {
         goto too_large;
     }
 
     // append value
-    if (str_appendva(client->resp_headers, &client->ta.resp_headers_len, HTTP_BUFSZ, fmt, ap)) {
+    if (str_appendva(client->resp_headers, &client->ta.resp_bufs[1].iov_len, HTTP_BUFSZ, fmt, ap)) {
         goto too_large;
     }
 
     // append EOL
-    if (str_append(client->resp_headers, &client->ta.resp_headers_len, HTTP_BUFSZ, "\r\n")) {
+    if (str_append(client->resp_headers, &client->ta.resp_bufs[1].iov_len, HTTP_BUFSZ, "\r\n")) {
         goto too_large;
     }
     return 0;
@@ -502,7 +519,7 @@ static inline int http_header_add_ap(struct kitserv_client* client, const char* 
 too_large:
     // couldn't fit the header, reset and return
     errno = ENOMEM;
-    client->ta.resp_headers_len = pre_sz;
+    client->ta.resp_bufs[1].iov_len = pre_sz;
     client->ta.resp_status = HTTP_507_INSUFFICIENT_STORAGE;
     return -1;
 }
@@ -1097,6 +1114,8 @@ static const char* get_status_string(enum kitserv_http_response_status status)
     switch (status) {
         case HTTP_200_OK:
             return "200 OK\r\n";
+        case HTTP_204_NO_CONTENT:
+            return "204 No Content\r\n";
         case HTTP_206_PARTIAL_CONTENT:
             return "206 Partial Content\r\n";
         case HTTP_304_NOT_MODIFIED:
@@ -1143,10 +1162,10 @@ static const char* get_status_string(enum kitserv_http_response_status status)
 static inline void prepare_resp_start(struct kitserv_client* client)
 {
     // should always fit, unless some idiot changed the buffer size to be too small
-    client->ta.resp_start_len = 0;
-    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ_SMALL, "%s",
+    client->ta.resp_bufs[0].iov_len = 0;
+    str_append(client->resp_start, &client->ta.resp_bufs[0].iov_len, HTTP_BUFSZ_SMALL, "%s",
                get_version_string(client->ta.req_version));
-    str_append(client->resp_start, &client->ta.resp_start_len, HTTP_BUFSZ_SMALL, "%s",
+    str_append(client->resp_start, &client->ta.resp_bufs[0].iov_len, HTTP_BUFSZ_SMALL, "%s",
                get_status_string(client->ta.resp_status));
 }
 
@@ -1155,7 +1174,7 @@ static inline void prepare_resp_start(struct kitserv_client* client)
  */
 static int prepare_error_response_headers(struct kitserv_client* client)
 {
-    client->ta.resp_headers_len = 0;
+    client->ta.resp_bufs[1].iov_len = 0;
 
     if (client->ta.resp_status == HTTP_405_METHOD_NOT_ALLOWED && http_header_add_allow(client)) {
         return -1;
@@ -1256,9 +1275,18 @@ success:
         goto error_response;
     }
 
-    if (str_append(client->resp_headers, &client->ta.resp_headers_len, HTTP_BUFSZ, "\r\n")) {
+    if (str_append(client->resp_headers, &client->ta.resp_bufs[1].iov_len, HTTP_BUFSZ, "\r\n")) {
         client->ta.resp_fd = HTTP_507_INSUFFICIENT_STORAGE;
         goto error_response;
+    }
+
+    // update the bases, since we're going to use them
+    client->ta.resp_bufs[0].iov_base = client->resp_start;
+    client->ta.resp_bufs[1].iov_base = client->resp_headers;
+    if (client->ta.resp_fd == 0 && client->ta.req_method != HTTP_HEAD) {
+        // rely on memset zeroing in the case that we aren't sending this buf
+        client->ta.resp_bufs[2].iov_base = &client->resp_body.buf[client->ta.resp_body_pos];
+        client->ta.resp_bufs[2].iov_len = client->resp_body.len - client->ta.resp_body_pos;
     }
 
     client->ta.state = HTTP_STATE_SEND;
@@ -1287,71 +1315,94 @@ error_response:
 int kitserv_http_send_response(struct kitserv_client* client)
 {
     ssize_t rc = 0;
-    struct iovec sendbufs[3];
-    int sendbufs_idx;
-    bool sent_start, sent_head, sent_body;
+    int i;
+
+    while (1) {
+        // writev will ignore 0-length iovecs - very convenient
+        rc = writev(client->sockfd, client->ta.resp_bufs, 3);
+        if (rc < 0) {
+            return errno = EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
+        }
+
+        for (i = 0; i < 3; i++) {
+            // always increment the base - either we sent that or that base is/becoming irrelevant
+            // wacky += because void* is not addable under -Wpedantic - but it's literally a char* anyway
+            client->ta.resp_bufs[i].iov_base = (char*)(client->ta.resp_bufs[i].iov_base) + rc;
+
+            if (client->ta.resp_bufs[i].iov_len <= (size_t)rc) {
+                client->ta.resp_bufs[i].iov_len = 0;
+            } else {
+                // rc falls within this buf
+                client->ta.resp_bufs[i].iov_len -= rc;
+                break;
+            }
+        }
+        if (i == 3 && client->ta.resp_bufs[2].iov_len == 0) {
+            client->ta.state = HTTP_STATE_SEND_FILE;
+            return 0;
+        }
+    }
+}
+
+#ifndef KITSERV_HAVE_SENDFILE
+/**
+ * Emulation of Linux sendfile sematics. However, offset MUST NOT be NULL.
+ */
+static inline ssize_t sendfile_emulation(int out_fd, int in_fd, off_t* offset, size_t count)
+{
+    const int SFE_BUFSZ = 4096;  // small, but (A) stack allocated and (B) need to re-read if EAGAIN is hit on send
+    char buf[SFE_BUFSZ];
+    ssize_t remaining, read, sent;
+
+    // sendfile only transfers at most 0x7ffff000 bytes (which helps us fit in the ssize_t return type)
+    assert(0x7ffff000 <= (size_t)-1);
+    if (count > 0x7ffff000) {
+        count = 0x7ffff000;
+    }
+    remaining = count;
 
     do {
-        // load buffers that need to be sent
-        sendbufs_idx = 0;
-        sent_start = false, sent_head = false, sent_body = false;
-        if (client->ta.resp_start_pos < client->ta.resp_start_len) {
-            sendbufs[sendbufs_idx].iov_base = &client->resp_start[client->ta.resp_start_pos];
-            sendbufs[sendbufs_idx].iov_len = client->ta.resp_start_len - client->ta.resp_start_pos;
-            sendbufs_idx++;
-            sent_start = true;
-        }
-        if (client->ta.resp_headers_pos < client->ta.resp_headers_len) {
-            sendbufs[sendbufs_idx].iov_base = &client->resp_headers[client->ta.resp_headers_pos];
-            sendbufs[sendbufs_idx].iov_len = client->ta.resp_headers_len - client->ta.resp_headers_pos;
-            sendbufs_idx++;
-            sent_head = true;
-        }
-        if (client->ta.resp_fd == 0 && client->ta.req_method != HTTP_HEAD &&
-            client->ta.resp_body_pos <= client->resp_body.len) {
-            sendbufs[sendbufs_idx].iov_base = &client->resp_body.buf[client->ta.resp_body_pos];
-            sendbufs[sendbufs_idx].iov_len = client->resp_body.len - client->ta.resp_body_pos;
-            sendbufs_idx++;
-            sent_body = true;
+        read = pread(in_fd, buf, SFE_BUFSZ < remaining ? SFE_BUFSZ : remaining, *offset);
+        if (read < 0) {
+            goto err;
         }
 
-        if (sent_start || sent_head || sent_body) {
-            // send the buffers that got filled in
-            rc = writev(client->sockfd, sendbufs, sendbufs_idx);
-            if (rc < 0) {
-                return errno == EAGAIN || errno == EWOULDBLOCK ? 0 : -1;
-            }
-
-            // increment our send variables - take bytes out of rc, up to the space that's unsent
-            if (sent_start) {
-                client->ta.resp_start_pos += rc;
-                // set rc to the number of bytes not consumed here, or negative if we couldn't finish this segment
-                rc = client->ta.resp_start_pos - client->ta.resp_start_len;
-            }
-            if (sent_head && rc > 0) {
-                client->ta.resp_headers_pos += rc;
-                rc = client->ta.resp_headers_pos - client->ta.resp_headers_len;
-            }
-            if (sent_body && rc > 0) {
-                client->ta.resp_body_pos += rc;
-                rc = client->ta.resp_body_pos - client->resp_body.len;
-            }
-            assert(rc <= 0);  // should have either consumed all bytes or have more to send
-        }
-    } while (rc < 0);  // while rc is below 0, we didn't send everything we wanted to
-
-    // have a file to send
-    if (client->ta.resp_fd > 0 && client->ta.req_method != HTTP_HEAD) {
-#ifdef __linux__
+        sent = 0;
         do {
+            sent = write(out_fd, buf, read);
+            if (sent < 0) {
+                goto err;
+            }
+        } while (sent < read);
+
+        remaining -= sent;
+        *offset += sent;
+    } while (remaining > 0);
+
+    return count - remaining;
+
+err:
+    if (count - remaining > 0) {
+        return count - remaining;
+    }
+    return -1;
+}
+#endif
+
+int kitserv_http_send_response_file(struct kitserv_client* client)
+{
+    ssize_t rc = 0;
+
+    if (client->ta.resp_fd > 0 && client->ta.req_method != HTTP_HEAD) {
+        do {
+#ifdef KITSERV_HAVE_SENDFILE
             rc = sendfile(client->sockfd, client->ta.resp_fd, &client->ta.resp_body_pos,
                           client->ta.resp_body_end - client->ta.resp_body_pos + 1);
-        } while (rc > 0);
 #else
-        // TODO: send the file here using `send(2)`
-        fprintf(stderr, "Kitserv: cannot send file (not implemented).\n");
-        client->ta.resp_body_pos = client->ta.resp_body_end + 1;
+            rc = sendfile_emulation(client->sockfd, client->ta.resp_fd, &client->ta.resp_body_pos,
+                                    client->ta.resp_body_end - client->ta.resp_body_pos + 1);
 #endif
+        } while (rc > 0 && client->ta.resp_body_pos <= client->ta.resp_body_end);
         if (client->ta.resp_body_pos > client->ta.resp_body_end) {
             // finished sending the file - pos should be one greater than end here
             close_fd_to_zero(&client->ta.resp_fd);
@@ -1365,4 +1416,82 @@ int kitserv_http_send_response(struct kitserv_client* client)
         return -1;
     }
     return 0;
+}
+
+/**
+ * Log a transaction to stdout - this should be done once everything is finished.
+ */
+static void log_transaction(struct kitserv_client* client)
+{
+    printf("[%d] %s\n", client->ta.resp_status, client->ta.req_path);
+}
+
+int kitserv_http_serve_client(struct kitserv_client* client)
+{
+    enum http_transaction_state* state = &client->ta.state;
+
+    /*
+     * Keep switching on the connection state to parse the request.
+     * If 0 is returned, it means that either the connection has blocked or it's time for the next step.
+     * Otherwise, an error occurred and it should be handled as appropriate.
+     */
+
+    while (1) {
+        switch (*state) {
+            case HTTP_STATE_READ:
+                if (kitserv_http_recv_request(client)) {
+                    if (client->ta.resp_status == HTTP_X_HANGUP) {
+                        // don't bother trying to do anything else
+                        return -1;
+                    }
+                    goto prep_response;
+                } else if (*state == HTTP_STATE_READ) {
+                    return 0;
+                }
+                /* fallthrough */
+            case HTTP_STATE_SERVE:
+                if (kitserv_http_serve_request(client)) {
+                    if (client->ta.resp_status == HTTP_X_HANGUP) {
+                        // don't bother trying to do anything else
+                        return -1;
+                    }
+                    goto prep_response;
+                } else if (*state == HTTP_STATE_SERVE) {
+                    return 0;
+                }
+                /* fallthrough */
+            case HTTP_STATE_PREPARE_RESPONSE:
+prep_response:
+                client->ta.state = HTTP_STATE_PREPARE_RESPONSE;
+                if (kitserv_http_prepare_response(client)) {
+                    return -1;
+                } else if (*state == HTTP_STATE_PREPARE_RESPONSE) {
+                    return 0;
+                }
+                if (!kitserv_silent_mode) {
+                    log_transaction(client);
+                }
+                /* fallthrough */
+            case HTTP_STATE_SEND:
+                if (kitserv_http_send_response(client)) {
+                    return -1;
+                } else if (*state == HTTP_STATE_SEND) {
+                    return 0;
+                }
+                /* fallthrough */
+            case HTTP_STATE_SEND_FILE:
+                if (kitserv_http_send_response_file(client)) {
+                    return -1;
+                } else if (*state == HTTP_STATE_SEND_FILE) {
+                    return 0;
+                }
+                /* fallthrough */
+            case HTTP_STATE_DONE:
+                kitserv_http_finalize_transaction(client);
+                continue;
+            default:
+                fprintf(stderr, "Unknown connection state: %d\n", *state);
+                return -1;
+        }
+    }
 }

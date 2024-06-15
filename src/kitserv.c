@@ -18,6 +18,7 @@
 #include <signal.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 #include <sys/types.h>
 
 #include "http.h"
@@ -137,71 +138,6 @@ static void connection_close(struct connection_container* container, struct conn
 }
 
 /**
- * Serve the given connection as much as possible.
- * Returns 0 if the connection is still alive, -1 if it should be closed.
- */
-static int connection_serve(struct connection* connection)
-{
-    struct kitserv_client* client = &connection->client;
-    enum http_transaction_state* state = &client->ta.state;
-
-    /*
-     * Keep switching on the connection state to parse the request.
-     * If 0 is returned, it means that either the connection has blocked or it's time for the next step.
-     * Otherwise, an error occurred and it should be handled as appropriate.
-     */
-
-    while (1) {
-        switch (*state) {
-            case HTTP_STATE_READ:
-                if (kitserv_http_recv_request(client)) {
-                    if (client->ta.resp_status == HTTP_X_HANGUP) {
-                        // don't bother trying to do anything else
-                        return -1;
-                    }
-                    goto prep_response;
-                } else if (*state == HTTP_STATE_READ) {
-                    return 0;
-                }
-                /* fallthrough */
-            case HTTP_STATE_SERVE:
-                if (kitserv_http_serve_request(client)) {
-                    if (client->ta.resp_status == HTTP_X_HANGUP) {
-                        // don't bother trying to do anything else
-                        return -1;
-                    }
-                    goto prep_response;
-                } else if (*state == HTTP_STATE_SERVE) {
-                    return 0;
-                }
-                /* fallthrough */
-            case HTTP_STATE_PREPARE_RESPONSE:
-prep_response:
-                client->ta.state = HTTP_STATE_PREPARE_RESPONSE;
-                if (kitserv_http_prepare_response(client)) {
-                    return -1;
-                } else if (*state == HTTP_STATE_PREPARE_RESPONSE) {
-                    return 0;
-                }
-                /* fallthrough */
-            case HTTP_STATE_SEND:
-                if (kitserv_http_send_response(client)) {
-                    return -1;
-                } else if (*state == HTTP_STATE_SEND) {
-                    return 0;
-                }
-                /* fallthrough */
-            case HTTP_STATE_DONE:
-                kitserv_http_finalize_transaction(client);
-                continue;
-            default:
-                fprintf(stderr, "Unknown connection state: %d\n", *state);
-                return -1;
-        }
-    }
-}
-
-/**
  * Score a given worker - lower = worse (prioritize high scores for new connections)
  * Always >= 0
  */
@@ -265,7 +201,7 @@ static void* client_worker(void* data)
         }
         for (i = 0; i < nevents; i++) {
             conn = kitserv_queue_event_to_data(&events[i]);
-            if (connection_serve(conn)) {
+            if (kitserv_http_serve_client(&conn->client)) {
                 // that transaction was the last one on this connection, so drop it
                 kitserv_queue_remove(self->queuefd, conn->client.sockfd);
                 kitserv_socket_close(conn->client.sockfd);  // ignore errors like ENOTCONN
@@ -323,23 +259,25 @@ void kitserv_server_start(struct kitserv_config* config)
     int i;
     struct worker* workers;
     struct accepter* accepters;
+    struct sigaction sigact_ign;
 
     kitserv_silent_mode = config->silent_mode;
 
     if (config->num_slots <= 0) {
         fprintf(stderr, "Invalid slot count: %d <= 0\n", config->num_slots);
-        abort();
+        exit(1);
     }
     if (config->num_workers <= 0) {
         fprintf(stderr, "Invalid worker count: %d <= 0\n", config->num_workers);
-        abort();
+        exit(1);
     }
     if (config->num_slots < config->num_workers) {
-        fprintf(stderr, "Invalid slot/worker ratio: %d/%d\n", config->num_slots, config->num_workers);
-        abort();
+        fprintf(stderr, "Invalid slot/worker count: %d < %d\n", config->num_slots, config->num_workers);
+        exit(1);
     }
 
-    slots = config->num_slots / config->num_workers;  // share slots between workers
+    // share slots between workers, round up to nearest multiple
+    slots = (config->num_slots + config->num_workers - 1) / config->num_workers;
 
     kitserv_http_init(config->http_root_context, config->api_tree);
 
@@ -353,8 +291,10 @@ void kitserv_server_start(struct kitserv_config* config)
         abort();
     }
     // ignore PIPE in case a client closes on us during a transaction
-    if (signal(SIGPIPE, SIG_IGN)) {
-        perror("signal");
+    memset(&sigact_ign, 0, sizeof(struct sigaction));
+    sigact_ign.sa_handler = SIG_IGN;
+    if (sigaction(SIGPIPE, &sigact_ign, NULL)) {
+        perror("sigaction");
         abort();
     }
 
@@ -401,7 +341,7 @@ void kitserv_server_start(struct kitserv_config* config)
         abort();
     }
 
-    //                                               workers               accept threads              self
+    //  info -->                                     workers               accept threads              self
     if (pthread_barrier_init(&startup_barrier, NULL, config->num_workers + !!bind_ipv4 + !!bind_ipv6 + 1)) {
         perror("pthread_barrier_init");
         abort();
