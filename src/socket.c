@@ -148,6 +148,7 @@ int kitserv_socket_accept(int sockfd)
 #endif
 
     // disable Nagle's algorithm, see tcp(7)
+    // we're the classic example of Nagle's algorithm tanking performance (non-pipelined persistent HTTP)
     opt = 1;
     if (setsockopt(client, IPPROTO_TCP, TCP_NODELAY, (void*)&opt, sizeof(opt))) {
         if (!kitserv_silent_mode) {

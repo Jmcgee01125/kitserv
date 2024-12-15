@@ -312,7 +312,7 @@ int kitserv_http_parse_cookies(struct kitserv_client* client)
 
 finished:
     // commit all of our spotted cookies
-    client->ta.req_num_cookies = cookie_index + 1;
+    client->ta.req_num_cookies = cookie_index;
     client->ta.req_fresh_cookies = NULL;
     return 0;
 }
