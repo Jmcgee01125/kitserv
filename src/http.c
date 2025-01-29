@@ -275,8 +275,6 @@ int kitserv_http_parse_cookies(struct kitserv_client* client)
         for (; *p == ' '; p++)
             ;
 
-        // TODO: there are possible illegal characters in cookie names and values, which we don't filter
-
         r = strchr(p, '=');
         if (!r) {
             // saw something weird, discard this header without saving cookies
