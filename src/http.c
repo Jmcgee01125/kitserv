@@ -84,8 +84,21 @@ err_reqheaders:
     return -1;
 }
 
+/**
+ * Silently close the given fd and set it to zero.
+ * If the fd is already zero or negative, do nothing.
+ */
+static inline void close_fd_to_zero(int* fd)
+{
+    if (*fd > 0) {
+        close(*fd);
+        *fd = 0;
+    }
+}
+
 static inline void cleanup_client(struct kitserv_client* client)
 {
+    close_fd_to_zero(&client->ta.resp_fd); // in case something was left open earlier from an abort
     memset(&client->ta, 0, sizeof(struct http_transaction));
     kitserv_buffer_reset(&client->resp_body, HTTP_BUFSZ);
 }
@@ -120,18 +133,6 @@ static int strtonum(char* str, int64_t* dest)
         return -1;
     }
     return 0;
-}
-
-/**
- * Silently close the given fd and set it to zero.
- * If the fd is already zero or negative, do nothing.
- */
-static inline void close_fd_to_zero(int* fd)
-{
-    if (*fd > 0) {
-        close(*fd);
-        *fd = 0;
-    }
 }
 
 /**
